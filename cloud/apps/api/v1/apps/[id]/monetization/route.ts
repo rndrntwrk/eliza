@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { appCreditsService } from "@/lib/services/app-credits";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -26,7 +25,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
 
     if (!app) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });
@@ -70,7 +69,7 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
 
     if (!app) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });

@@ -18,7 +18,6 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -35,7 +34,7 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const agent = await charactersService.getById(agentId);
+    const agent = await c.var.deps.getCharacterById.execute(agentId);
     if (!agent) throw NotFoundError("Agent not found");
 
     if (agent.user_id !== user.id && agent.organization_id !== user.organization_id) {
@@ -84,9 +83,9 @@ app.put("/", async (c) => {
       settings: validation.data,
     });
 
-    await charactersService.invalidateCache(agentId);
+    await c.var.deps.invalidateCharacterCache.execute(agentId);
 
-    const agent = await charactersService.getById(agentId);
+    const agent = await c.var.deps.getCharacterById.execute(agentId);
 
     return c.json({
       success: true,

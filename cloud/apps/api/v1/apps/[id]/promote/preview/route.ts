@@ -11,7 +11,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { appsService } from "@/lib/services/apps";
 import {
   getDiscordConfigWithDefaults,
   getTelegramConfigWithDefaults,
@@ -55,7 +54,7 @@ async function __hono_POST(request: Request, { params }: RouteParams): Promise<R
 
   const { platforms, count, agentCharacterId } = parsed.data;
 
-  const app = await appsService.getById(id);
+  const app = await c.var.deps.getAppById.execute(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }

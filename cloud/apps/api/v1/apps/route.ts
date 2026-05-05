@@ -10,7 +10,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appFactoryService } from "@/lib/services/app-factory";
-import { AppNameConflictError, appsService } from "@/lib/services/apps";
+import { AppNameConflictError } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -30,7 +30,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const apps = await appsService.listByOrganization(user.organization_id);
+    const apps = await c.var.deps.listAppsByOrganization.execute(
+      user.organization_id,
+    );
     return c.json({ success: true, apps });
   } catch (error) {
     logger.error("[Apps API] Failed to list apps:", error);

@@ -22,7 +22,6 @@ import {
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
-import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
 import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
@@ -43,7 +42,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   const id = c.req.param("id");
   if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const character = await charactersService.getById(id);
+  const character = await c.var.deps.getCharacterById.execute(id);
   if (!character) return c.json({ error: "Agent not found" }, 404);
   if (!character.is_public || !character.mcp_enabled) {
     return c.json({ error: "MCP not accessible for this agent" }, 403);
@@ -100,7 +99,7 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   const id = c.req.param("id");
   if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const character = await charactersService.getById(id);
+  const character = await c.var.deps.getCharacterById.execute(id);
   if (!character) {
     return c.json(
       {

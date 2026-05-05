@@ -26,7 +26,6 @@ import type {
   ProviderHttpError,
 } from "@/lib/providers/types";
 import { appCreditsService } from "@/lib/services/app-credits";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -163,7 +162,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
 
     // Parallelize independent operations for better performance
     const [app, authResult, chatRequest] = await Promise.all([
-      appsService.getById(appId),
+      c.var.deps.getAppById.execute(appId),
       requireAuthOrApiKeyWithOrg(request),
       request.json() as Promise<OpenAIChatRequest>,
     ]);

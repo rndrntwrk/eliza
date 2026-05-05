@@ -13,7 +13,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { charactersService } from "@/lib/services/characters/characters";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -249,7 +248,7 @@ async function fetchLocalAgents(
   const baseUrl = appUrlEnv || "https://www.elizacloud.ai";
   const source = resolveDiscoverySource(baseUrl);
 
-  let characters = await charactersService.listPublic({
+  let characters = await c.var.deps.listPublicCharacters.execute({
     search: params.query,
     category: params.categories?.[0],
     limit: params.limit,

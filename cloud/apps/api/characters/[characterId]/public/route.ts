@@ -14,7 +14,6 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -26,8 +25,8 @@ app.get("/", async (c) => {
     characterRef.startsWith("@") && characterRef.length > 1 ? characterRef.slice(1) : null;
   try {
     const character = username
-      ? await charactersService.getByUsername(username)
-      : await charactersService.getById(characterRef);
+      ? await c.var.deps.getCharacterByUsername.execute(username)
+      : await c.var.deps.getCharacterById.execute(characterRef);
     if (!character) {
       logger.warn(`[Public Character API] Character not found: ${characterRef}`);
       return c.json({ success: false, error: "Character not found" }, 404);
@@ -40,7 +39,7 @@ app.get("/", async (c) => {
     const isOwner = !!(user && character.user_id === user.id);
     const isPublic = character.is_public === true;
 
-    const claimCheck = await charactersService.isClaimableAffiliateCharacter(character.id);
+    const claimCheck = await c.var.deps.isClaimableAffiliateCharacter.execute(character.id);
     const isClaimableAffiliate = claimCheck.claimable;
 
     if (!isPublic && !isOwner && !isClaimableAffiliate) {

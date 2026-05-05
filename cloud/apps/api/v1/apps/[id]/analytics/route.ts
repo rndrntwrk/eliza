@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -28,7 +27,7 @@ app.get("/", async (c) => {
       ? new Date(searchParams.get("end_date")!)
       : new Date();
 
-    const existingApp = await appsService.getById(id);
+    const existingApp = await c.var.deps.getAppById.execute(id);
 
     if (!existingApp) {
       return c.json({ success: false, error: "App not found" }, 404);
@@ -38,8 +37,8 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const analytics = await appsService.getAnalytics(id, periodType, startDate, endDate);
-    const totalStats = await appsService.getTotalStats(id);
+    const analytics = await c.var.deps.getAppAnalytics.execute(id, periodType, startDate, endDate);
+    const totalStats = await c.var.deps.getAppTotalStats.execute(id);
 
     return c.json({
       success: true,

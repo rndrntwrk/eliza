@@ -8,7 +8,6 @@
 
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,14 +32,14 @@ app.post("/", async (c) => {
       username: body.username,
     });
 
-    const original = await charactersService.getById(id);
+    const original = await c.var.deps.getCharacterById.execute(id);
     if (!original) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
 
     const cloneName = body.name || `${original.name} (Copy)`;
 
-    const clonedCharacter = await charactersService.create({
+    const clonedCharacter = await c.var.deps.createCharacter.execute({
       user_id: user.id,
       organization_id: user.organization_id,
       name: cloneName,

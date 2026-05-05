@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { appEarningsService } from "@/lib/services/app-earnings";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -185,7 +184,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
       process.env.NODE_ENV === "development" && process.env.ENVIRONMENT !== "production";
     const useTestData = isDevelopment && testDataParam === "true";
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
 
     if (!app) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });

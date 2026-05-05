@@ -131,10 +131,145 @@ export interface AuthedUser {
   is_anonymous?: boolean;
 }
 
+/**
+ * Per-request dependency container — populated by the composition middleware
+ * in `apps/api/src/composition/build-container.ts`, consumed by routes as
+ * `c.var.deps.<useCase>.execute(...)`.
+ *
+ * Defined here (rather than in build-container.ts) so packages/lib/* sees
+ * the full shape during standalone typecheck.
+ */
+import type { DeactivateApiKeysByNameUseCase } from "@/lib/application/api-key/deactivate-api-keys-by-name";
+import type { DeleteApiKeyUseCase } from "@/lib/application/api-key/delete-api-key";
+import type { GetApiKeyByIdUseCase } from "@/lib/application/api-key/get-api-key-by-id";
+import type { IncrementApiKeyUsageUseCase } from "@/lib/application/api-key/increment-api-key-usage";
+import type { IssueApiKeyUseCase } from "@/lib/application/api-key/issue-api-key";
+import type { ListApiKeysByOrganizationUseCase } from "@/lib/application/api-key/list-api-keys-by-organization";
+import type { UpdateApiKeyUseCase } from "@/lib/application/api-key/update-api-key";
+import type { ValidateApiKeyUseCase } from "@/lib/application/api-key/validate-api-key";
+import type { CheckAppNameAvailabilityUseCase } from "@/lib/application/app/check-app-name-availability";
+import type { GetAppAnalyticsUseCase } from "@/lib/application/app/get-app-analytics";
+import type { GetAppByApiKeyIdUseCase } from "@/lib/application/app/get-app-by-api-key-id";
+import type { GetAppByIdUseCase } from "@/lib/application/app/get-app-by-id";
+import type { GetAppRecentRequestsUseCase } from "@/lib/application/app/get-app-recent-requests";
+import type { GetAppRequestsOverTimeUseCase } from "@/lib/application/app/get-app-requests-over-time";
+import type { GetAppRequestStatsUseCase } from "@/lib/application/app/get-app-request-stats";
+import type { GetAppTopVisitorsUseCase } from "@/lib/application/app/get-app-top-visitors";
+import type { GetAppTotalStatsUseCase } from "@/lib/application/app/get-app-total-stats";
+import type { GetAppUsersUseCase } from "@/lib/application/app/get-app-users";
+import type { ListAppsByOrganizationUseCase } from "@/lib/application/app/list-apps-by-organization";
+import type { TrackAppPageViewUseCase } from "@/lib/application/app/track-app-page-view";
+import type { UpdateAppUseCase } from "@/lib/application/app/update-app";
+import type { CreateOrganizationUseCase } from "@/lib/application/organization/create-organization";
+import type { DeleteOrganizationUseCase } from "@/lib/application/organization/delete-organization";
+import type { GetOrganizationByIdUseCase } from "@/lib/application/organization/get-organization-by-id";
+import type { GetOrganizationBySlugUseCase } from "@/lib/application/organization/get-organization-by-slug";
+import type { GetOrganizationByStripeCustomerIdUseCase } from "@/lib/application/organization/get-organization-by-stripe-customer-id";
+import type { GetOrganizationWithUsersUseCase } from "@/lib/application/organization/get-organization-with-users";
+import type { UpdateOrganizationUseCase } from "@/lib/application/organization/update-organization";
+import type { UpdateOrganizationCreditBalanceUseCase } from "@/lib/application/organization/update-organization-credit-balance";
+import type { ClaimAffiliateCharacterUseCase } from "@/lib/application/character/claim-affiliate-character";
+import type { CreateCharacterUseCase } from "@/lib/application/character/create-character";
+import type { DeleteCharacterUseCase } from "@/lib/application/character/delete-character";
+import type { GetCharacterByIdUseCase } from "@/lib/application/character/get-character-by-id";
+import type { GetCharacterByIdForUserUseCase } from "@/lib/application/character/get-character-by-id-for-user";
+import type { GetCharacterByUsernameUseCase } from "@/lib/application/character/get-character-by-username";
+import type { GetSavedAgentDetailsUseCase } from "@/lib/application/character/get-saved-agent-details";
+import type { GetSavedAgentsForUserUseCase } from "@/lib/application/character/get-saved-agents-for-user";
+import type { InvalidateCharacterCacheUseCase } from "@/lib/application/character/invalidate-character-cache";
+import type { IsClaimableAffiliateCharacterUseCase } from "@/lib/application/character/is-claimable-affiliate-character";
+import type { ListCharacterTemplatesUseCase } from "@/lib/application/character/list-character-templates";
+import type { ListCharactersByOrganizationUseCase } from "@/lib/application/character/list-characters-by-organization";
+import type { ListCharactersByUserUseCase } from "@/lib/application/character/list-characters-by-user";
+import type { ListPublicCharactersUseCase } from "@/lib/application/character/list-public-characters";
+import type { RemoveSavedAgentUseCase } from "@/lib/application/character/remove-saved-agent";
+import type { UpdateCharacterUseCase } from "@/lib/application/character/update-character";
+import type { UpdateCharacterForUserUseCase } from "@/lib/application/character/update-character-for-user";
+import type { CreateUserUseCase } from "@/lib/application/user/create-user";
+import type { DeleteUserUseCase } from "@/lib/application/user/delete-user";
+import type { GetUserByEmailUseCase } from "@/lib/application/user/get-user-by-email";
+import type { GetUserByIdUseCase } from "@/lib/application/user/get-user-by-id";
+import type { GetUserByStewardIdUseCase } from "@/lib/application/user/get-user-by-steward-id";
+import type { GetUserWithOrganizationUseCase } from "@/lib/application/user/get-user-with-organization";
+import type { ListUsersByOrganizationUseCase } from "@/lib/application/user/list-users-by-organization";
+import type { UpdateUserUseCase } from "@/lib/application/user/update-user";
+
+export interface CompositionContext {
+  // ── ApiKey aggregate ──────────────────────────────────────────────────
+  issueApiKey: IssueApiKeyUseCase;
+  validateApiKey: ValidateApiKeyUseCase;
+  incrementApiKeyUsage: IncrementApiKeyUsageUseCase;
+  getApiKeyById: GetApiKeyByIdUseCase;
+  listApiKeysByOrganization: ListApiKeysByOrganizationUseCase;
+  updateApiKey: UpdateApiKeyUseCase;
+  deleteApiKey: DeleteApiKeyUseCase;
+  deactivateApiKeysByName: DeactivateApiKeysByNameUseCase;
+
+  // ── Organization aggregate ────────────────────────────────────────────
+  getOrganizationById: GetOrganizationByIdUseCase;
+  getOrganizationBySlug: GetOrganizationBySlugUseCase;
+  getOrganizationByStripeCustomerId: GetOrganizationByStripeCustomerIdUseCase;
+  getOrganizationWithUsers: GetOrganizationWithUsersUseCase;
+  createOrganization: CreateOrganizationUseCase;
+  updateOrganization: UpdateOrganizationUseCase;
+  updateOrganizationCreditBalance: UpdateOrganizationCreditBalanceUseCase;
+  deleteOrganization: DeleteOrganizationUseCase;
+
+  // ── User aggregate ────────────────────────────────────────────────────
+  getUserById: GetUserByIdUseCase;
+  getUserByEmail: GetUserByEmailUseCase;
+  getUserByStewardId: GetUserByStewardIdUseCase;
+  getUserWithOrganization: GetUserWithOrganizationUseCase;
+  listUsersByOrganization: ListUsersByOrganizationUseCase;
+  createUser: CreateUserUseCase;
+  updateUser: UpdateUserUseCase;
+  deleteUser: DeleteUserUseCase;
+
+  // ── App aggregate ─────────────────────────────────────────────────────
+  getAppById: GetAppByIdUseCase;
+  getAppByApiKeyId: GetAppByApiKeyIdUseCase;
+  listAppsByOrganization: ListAppsByOrganizationUseCase;
+  checkAppNameAvailability: CheckAppNameAvailabilityUseCase;
+  updateApp: UpdateAppUseCase;
+  trackAppPageView: TrackAppPageViewUseCase;
+  getAppRequestStats: GetAppRequestStatsUseCase;
+  getAppRecentRequests: GetAppRecentRequestsUseCase;
+  getAppTopVisitors: GetAppTopVisitorsUseCase;
+  getAppRequestsOverTime: GetAppRequestsOverTimeUseCase;
+  getAppUsers: GetAppUsersUseCase;
+  getAppAnalytics: GetAppAnalyticsUseCase;
+  getAppTotalStats: GetAppTotalStatsUseCase;
+
+  // ── Character aggregate ───────────────────────────────────────────────
+  getCharacterById: GetCharacterByIdUseCase;
+  getCharacterByIdForUser: GetCharacterByIdForUserUseCase;
+  getCharacterByUsername: GetCharacterByUsernameUseCase;
+  listCharactersByUser: ListCharactersByUserUseCase;
+  listCharactersByOrganization: ListCharactersByOrganizationUseCase;
+  listPublicCharacters: ListPublicCharactersUseCase;
+  listCharacterTemplates: ListCharacterTemplatesUseCase;
+  createCharacter: CreateCharacterUseCase;
+  updateCharacter: UpdateCharacterUseCase;
+  updateCharacterForUser: UpdateCharacterForUserUseCase;
+  deleteCharacter: DeleteCharacterUseCase;
+  invalidateCharacterCache: InvalidateCharacterCacheUseCase;
+  isClaimableAffiliateCharacter: IsClaimableAffiliateCharacterUseCase;
+  claimAffiliateCharacter: ClaimAffiliateCharacterUseCase;
+  getSavedAgentsForUser: GetSavedAgentsForUserUseCase;
+  getSavedAgentDetails: GetSavedAgentDetailsUseCase;
+  removeSavedAgent: RemoveSavedAgentUseCase;
+}
+
 export interface Variables {
   user: AuthedUser | null | undefined;
   authMethod?: "session" | "api_key" | "wallet_signature" | "anonymous";
   requestId: string;
+  /**
+   * Per-request use-case container. Always set by the composition middleware
+   * mounted in `apps/api/src/bootstrap-app.ts`. Empty until Phase B; after
+   * that, contains use cases per migrated aggregate.
+   */
+  deps: CompositionContext;
 }
 
 export type AppEnv = {

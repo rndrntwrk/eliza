@@ -13,7 +13,6 @@ import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
-import { appsService } from "@/lib/services/apps";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -42,7 +41,7 @@ app.post("/", async (c) => {
 
     const { app_id, amount, success_url, cancel_url } = validation.data;
 
-    const targetApp = await appsService.getById(app_id);
+    const targetApp = await c.var.deps.getAppById.execute(app_id);
     if (!targetApp) {
       return c.json({ success: false, error: "App not found" }, 404);
     }

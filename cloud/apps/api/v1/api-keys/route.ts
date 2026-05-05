@@ -9,8 +9,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import type { ApiKey } from "@/lib/domain/api-key/api-key";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,9 +23,7 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
-function toClientApiKey(
-  apiKey: Awaited<ReturnType<typeof apiKeysService.listByOrganization>>[number],
-) {
+function toClientApiKey(apiKey: ApiKey) {
   return {
     id: apiKey.id,
     name: apiKey.name,
@@ -41,7 +42,9 @@ function toClientApiKey(
 app.get("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const keys = await apiKeysService.listByOrganization(user.organization_id);
+    const keys = await c.var.deps.listApiKeysByOrganization.execute(
+      user.organization_id,
+    );
     return c.json({ keys: keys.map(toClientApiKey) });
   } catch (error) {
     logger.error("Error fetching API keys:", error);
@@ -56,7 +59,7 @@ app.post("/", async (c) => {
     const { name, description, permissions, rate_limit, expires_at } =
       createApiKeySchema.parse(body);
 
-    const { apiKey, plainKey } = await apiKeysService.create({
+    const { apiKey, plainKey } = await c.var.deps.issueApiKey.execute({
       name,
       description,
       organization_id: user.organization_id,

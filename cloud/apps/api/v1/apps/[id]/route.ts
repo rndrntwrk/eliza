@@ -12,7 +12,6 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCleanupService } from "@/lib/services/app-cleanup";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -43,7 +42,7 @@ app.get("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
 
-    const found = await appsService.getById(id);
+    const found = await c.var.deps.getAppById.execute(id);
     if (!found) return c.json({ success: false, error: "App not found" }, 404);
     if (found.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
@@ -60,7 +59,7 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   const id = c.req.param("id");
   if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
 
-  const existing = await appsService.getById(id);
+  const existing = await c.var.deps.getAppById.execute(id);
   if (!existing) return c.json({ success: false, error: "App not found" }, 404);
   if (existing.organization_id !== user.organization_id) {
     return c.json({ success: false, error: "Access denied" }, 403);
@@ -83,7 +82,7 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
     ...validationResult.data,
     app_url: validationResult.data.app_url ?? undefined,
   };
-  const updated = await appsService.update(id, updateData);
+  const updated = await c.var.deps.updateApp.execute(id, updateData);
 
   logger.info(`[Apps API] ${verb === "PUT" ? "Updated" : "Patched"} app: ${id}`, {
     appId: id,
@@ -119,7 +118,7 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
 
-    const existing = await appsService.getById(id);
+    const existing = await c.var.deps.getAppById.execute(id);
     if (!existing) return c.json({ success: false, error: "App not found" }, 404);
     if (existing.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);

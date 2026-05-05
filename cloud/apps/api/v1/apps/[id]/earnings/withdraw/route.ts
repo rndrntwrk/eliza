@@ -6,7 +6,6 @@ import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appEarningsService } from "@/lib/services/app-earnings";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -57,7 +56,7 @@ async function handlePOST(request: Request, context: RouteContext) {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
 
     if (!app) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });

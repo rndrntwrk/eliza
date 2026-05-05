@@ -11,7 +11,6 @@ import {
   type AdSize,
   appPromotionAssetsService,
 } from "@/lib/services/app-promotion-assets";
-import { appsService } from "@/lib/services/apps";
 import { creditsService } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -32,7 +31,7 @@ async function __hono_POST(request: Request, { params }: RouteParams) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
-  const app = await appsService.getById(id);
+  const app = await c.var.deps.getAppById.execute(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }
@@ -100,7 +99,7 @@ async function __hono_POST(request: Request, { params }: RouteParams) {
         generatedAt: asset.generatedAt.toISOString(),
       }));
 
-      await appsService.update(id, {
+      await c.var.deps.updateApp.execute(id, {
         promotional_assets: promotionalAssets,
       });
 
@@ -147,7 +146,7 @@ async function __hono_GET(request: Request, { params }: RouteParams) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
-  const app = await appsService.getById(id);
+  const app = await c.var.deps.getAppById.execute(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }

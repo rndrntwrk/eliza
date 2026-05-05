@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { advertisingService } from "@/lib/services/advertising";
-import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -15,7 +14,7 @@ async function __hono_GET(request: Request, { params }: RouteParams) {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
     if (!app || app.organization_id !== user.organization_id) {
       return Response.json({ error: "App not found" }, { status: 404 });
     }

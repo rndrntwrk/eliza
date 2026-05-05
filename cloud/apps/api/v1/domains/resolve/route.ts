@@ -8,7 +8,6 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -41,7 +40,7 @@ app.get("/", async (c) => {
     return c.json({ success: false, error: "Domain not mapped" }, 404);
   }
 
-  const appRow = await appsService.getById(managedDomain.appId);
+  const appRow = await c.var.deps.getAppById.execute(managedDomain.appId);
   if (!appRow || !appRow.is_active || !appRow.is_approved) {
     return c.json({ success: false, error: "Mapped app is not active" }, 404);
   }

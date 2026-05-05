@@ -9,7 +9,6 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
@@ -24,7 +23,7 @@ app.post("/", async (c) => {
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
-    const appRow = await appsService.getById(appId);
+    const appRow = await c.var.deps.getAppById.execute(appId);
     if (!appRow || appRow.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "App not found" }, 404);
     }

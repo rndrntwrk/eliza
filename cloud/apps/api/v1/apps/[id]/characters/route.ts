@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { appsService } from "@/lib/services/apps";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -30,7 +28,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
       // If using API key, verify it belongs to this app
       if (apiKey) {
         const { id } = await params;
-        const app = await appsService.getById(id);
+        const app = await c.var.deps.getAppById.execute(id);
         if (!app || app.api_key_id !== apiKey.id) {
           return Response.json(
             { success: false, error: "Invalid API key for this app" },
@@ -47,7 +45,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
 
-    const app = await appsService.getById(id);
+    const app = await c.var.deps.getAppById.execute(id);
 
     if (!app) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });
@@ -71,7 +69,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     // Fetch the character details
     const characters = await Promise.all(
       linkedCharacterIds.map(async (characterId) => {
-        const character = await charactersService.getById(characterId);
+        const character = await c.var.deps.getCharacterById.execute(characterId);
         if (!character) return null;
 
         return {
@@ -123,7 +121,7 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const existingApp = await appsService.getById(id);
+    const existingApp = await c.var.deps.getAppById.execute(id);
 
     if (!existingApp) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });
@@ -152,7 +150,7 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
 
     // Verify all characters exist and belong to the user
     for (const characterId of character_ids) {
-      const character = await charactersService.getById(characterId);
+      const character = await c.var.deps.getCharacterById.execute(characterId);
       if (!character) {
         return Response.json(
           { success: false, error: `Character not found: ${characterId}` },
@@ -172,7 +170,7 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Update the app with the new character IDs
-    await appsService.update(id, {
+    await c.var.deps.updateApp.execute(id, {
       linked_character_ids: character_ids,
     });
 

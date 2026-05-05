@@ -1,38 +1,28 @@
 import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-async function handlePOST(request: Request, context: { params: Promise<{ id: string }> }) {
-  if (!context) {
-    return Response.json({ success: false, error: "Missing route parameters" }, { status: 400 });
-  }
-  try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const { id } = await context.params;
+const app = new Hono<AppEnv>();
 
-    const existingApp = await appsService.getById(id);
+app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    const id = c.req.param("id") ?? "";
+
+    const existingApp = await c.var.deps.getAppById.execute(id);
 
     if (!existingApp) {
-      return Response.json(
-        {
-          success: false,
-          error: "App not found",
-        },
-        { status: 404 },
-      );
+      return c.json({ success: false, error: "App not found" }, 404);
     }
 
     if (existingApp.organization_id !== user.organization_id) {
-      return Response.json(
-        {
-          success: false,
-          error: "Access denied",
-        },
-        { status: 403 },
-      );
+      return c.json({ success: false, error: "Access denied" }, 403);
     }
 
     const newApiKey = await appsService.regenerateApiKey(id);
@@ -43,31 +33,25 @@ async function handlePOST(request: Request, context: { params: Promise<{ id: str
       organizationId: user.organization_id,
     });
 
-    return Response.json({
+    return c.json({
       success: true,
       apiKey: newApiKey,
-      message: "API key regenerated successfully. Make sure to save it securely.",
+      message:
+        "API key regenerated successfully. Make sure to save it securely.",
     });
   } catch (error) {
     logger.error("Failed to regenerate API key:", error);
-    return Response.json(
+    return c.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to regenerate API key",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to regenerate API key",
       },
-      { status: 500 },
+      500,
     );
   }
-}
-
-const app = new Hono<AppEnv>();
-
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) =>
-  handlePOST(c.req.raw, {
-    params: Promise.resolve({
-      id: c.req.param("id")!,
-    }),
-  }),
-);
+});
 
 export default app;

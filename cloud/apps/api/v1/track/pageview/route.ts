@@ -5,13 +5,18 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
-import { appsService } from "@/lib/services/apps";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-function detectSource(origin: string, referer: string, pageUrl: string): string {
+function detectSource(
+  origin: string,
+  referer: string,
+  pageUrl: string,
+): string {
   const combined = `${origin} ${referer} ${pageUrl}`.toLowerCase();
   if (
     combined.includes("sandbox") ||
@@ -33,7 +38,10 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 app.post("/", async (c) => {
   const startTime = Date.now();
   try {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const {
       app_id,
       api_key: bodyApiKey,
@@ -64,18 +72,21 @@ app.post("/", async (c) => {
 
     let appId = app_id;
     if (!appId && apiKey) {
-      const validatedKey = await apiKeysService.validateApiKey(apiKey);
+      const validatedKey = await c.var.deps.validateApiKey.execute(apiKey);
       if (validatedKey) {
-        const appRow = await appsService.getByApiKeyId(validatedKey.id);
+        const appRow = await c.var.deps.getAppByApiKeyId.execute(validatedKey.id);
         if (appRow) appId = appRow.id;
       }
     }
 
     if (!appId) {
-      return c.json({ success: false, error: "Missing app_id or valid API key" }, 400);
+      return c.json(
+        { success: false, error: "Missing app_id or valid API key" },
+        400,
+      );
     }
 
-    const appRow = await appsService.getById(appId);
+    const appRow = await c.var.deps.getAppById.execute(appId);
     if (!appRow) {
       return c.json({ success: false, error: "App not found" }, 404);
     }
@@ -83,7 +94,7 @@ app.post("/", async (c) => {
     const pageUrlValue = page_url || pathname || "/";
     const source = detectSource(origin, referer, pageUrlValue);
 
-    await appsService.trackPageView(appId, {
+    await c.var.deps.trackAppPageView.execute(appId, {
       pageUrl: pageUrlValue,
       referrer: referrer || referer,
       ipAddress,

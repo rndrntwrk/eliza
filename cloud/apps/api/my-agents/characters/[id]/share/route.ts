@@ -13,7 +13,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,7 +24,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await c.var.deps.getCharacterByIdForUser.execute(id, user.id);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
@@ -57,7 +56,7 @@ app.put("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
 
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await c.var.deps.getCharacterByIdForUser.execute(id, user.id);
     if (!character) {
       return c.json({ success: false, error: "Character not found or access denied" }, 404);
     }
@@ -80,7 +79,7 @@ app.put("/", async (c) => {
       newStatus: isPublic,
     });
 
-    const updated = await charactersService.update(id, { is_public: isPublic });
+    const updated = await c.var.deps.updateCharacter.execute(id, { is_public: isPublic });
     if (!updated) {
       return c.json({ success: false, error: "Failed to update character" }, 500);
     }

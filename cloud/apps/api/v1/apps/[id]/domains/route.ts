@@ -14,7 +14,6 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
-import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
@@ -35,7 +34,7 @@ async function loadOwnedApp(c: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(c);
   const appId = c.req.param("id");
   if (!appId) return { error: "missing path params", status: 400 as const };
-  const appRow = await appsService.getById(appId);
+  const appRow = await c.var.deps.getAppById.execute(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
   }

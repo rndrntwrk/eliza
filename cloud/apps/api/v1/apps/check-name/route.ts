@@ -6,7 +6,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -35,7 +34,7 @@ app.post("/", async (c) => {
     }
 
     const { name } = validationResult.data;
-    const result = await appsService.isNameAvailable(name);
+    const result = await c.var.deps.checkAppNameAvailability.execute(name);
 
     logger.debug("[Apps API] App name availability check", {
       name,

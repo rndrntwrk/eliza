@@ -13,7 +13,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService, type DnsRecordType } from "@/lib/services/cloudflare-dns";
 import {
   cloudflareRegistrarService,
@@ -52,7 +51,7 @@ app.post("/", async (c) => {
     }
     const { domain } = parsed.data;
 
-    const appRow = await appsService.getById(appId);
+    const appRow = await c.var.deps.getAppById.execute(appId);
     if (!appRow) return c.json({ success: false, error: "App not found" }, 404);
     if (appRow.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);

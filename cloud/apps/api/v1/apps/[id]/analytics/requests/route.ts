@@ -3,7 +3,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,7 +32,7 @@ async function handleGET(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
 
-    const existingApp = await appsService.getById(id);
+    const existingApp = await c.var.deps.getAppById.execute(id);
 
     if (!existingApp) {
       return Response.json({ success: false, error: "App not found" }, { status: 404 });
@@ -62,7 +61,7 @@ async function handleGET(
 
     switch (view) {
       case "logs": {
-        const result = await appsService.getRecentRequests(id, {
+        const result = await c.var.deps.getAppRecentRequests.execute(id, {
           limit,
           offset,
           requestType,
@@ -79,7 +78,7 @@ async function handleGET(
       }
 
       case "visitors": {
-        const visitors = await appsService.getTopVisitors(id, limit, startDate, endDate);
+        const visitors = await c.var.deps.getAppTopVisitors.execute(id, limit, startDate, endDate);
         return Response.json({
           success: true,
           visitors,
@@ -94,7 +93,7 @@ async function handleGET(
         const timelineStart = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const timelineEnd = endDate || new Date();
 
-        const timeline = await appsService.getRequestsOverTime(
+        const timeline = await c.var.deps.getAppRequestsOverTime.execute(
           id,
           periodType,
           timelineStart,
@@ -113,7 +112,7 @@ async function handleGET(
 
       case "stats":
       default: {
-        const stats = await appsService.getRequestStats(id, startDate, endDate);
+        const stats = await c.var.deps.getAppRequestStats.execute(id, startDate, endDate);
         return Response.json({
           success: true,
           stats,

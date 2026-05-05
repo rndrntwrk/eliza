@@ -15,7 +15,6 @@ import { z } from "zod";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
@@ -91,7 +90,7 @@ app.post("/", async (c) => {
 
     let character;
     try {
-      character = await charactersService.create({
+      character = await c.var.deps.createCharacter.execute({
         name: agentName,
         bio: p.character?.bio ? [p.character.bio] : [`Agent for ${p.tokenName}`],
         user_id: identity.userId,
@@ -148,7 +147,7 @@ app.post("/", async (c) => {
       });
     } catch (createErr) {
       try {
-        await charactersService.delete(character.id);
+        await c.var.deps.deleteCharacter.execute(character.id);
         logger.info("[service-api] Cleaned up orphaned character after createAgent failure", {
           characterId: character.id,
         });
@@ -206,7 +205,7 @@ app.post("/", async (c) => {
       });
     } catch (enqueueErr) {
       try {
-        await charactersService.delete(character.id);
+        await c.var.deps.deleteCharacter.execute(character.id);
         logger.info("[service-api] Cleaned up orphaned character after enqueue failure", {
           characterId: character.id,
           agentId: agent.id,

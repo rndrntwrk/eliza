@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import { dbWrite } from "@/db/helpers";
 import { memoriesRepository } from "@/db/repositories/agents";
 import { isValidFilename, KNOWLEDGE_CONSTANTS } from "@/lib/constants/knowledge";
-import { charactersService } from "@/lib/services/characters/characters";
 import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 export interface KnowledgeScope {
@@ -78,7 +77,7 @@ export async function resolveKnowledgeScope(
     };
   }
 
-  const character = await charactersService.getByIdForUser(normalizedCharacterId, user.id);
+  const character = await c.var.deps.getCharacterByIdForUser.execute(normalizedCharacterId, user.id);
   if (!character) {
     return Response.json({ success: false, error: "Character not found" }, { status: 404 });
   }

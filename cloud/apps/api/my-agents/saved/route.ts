@@ -9,7 +9,6 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,7 +19,7 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     logger.debug("[Saved Agents API] Fetching saved agents for user:", { userId: user.id });
 
-    const savedAgents = await charactersService.getSavedAgentsForUser(user.id);
+    const savedAgents = await c.var.deps.getSavedAgentsForUser.execute(user.id);
 
     logger.debug("[Saved Agents API] Found saved agents:", {
       userId: user.id,

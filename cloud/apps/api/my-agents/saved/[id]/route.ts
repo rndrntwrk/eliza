@@ -8,7 +8,6 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -24,7 +23,7 @@ app.get("/", async (c) => {
       agentId,
     });
 
-    const result = await charactersService.getSavedAgentDetails(user.id, agentId);
+    const result = await c.var.deps.getSavedAgentDetails.execute(user.id, agentId);
     if (!result) {
       return c.json({ success: false, error: "Agent not found or not accessible" }, 404);
     }
@@ -54,7 +53,7 @@ app.delete("/", async (c) => {
       agentId,
     });
 
-    const result = await charactersService.removeSavedAgent(user.id, agentId);
+    const result = await c.var.deps.removeSavedAgent.execute(user.id, agentId);
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 404);
     }

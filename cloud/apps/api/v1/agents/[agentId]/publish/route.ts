@@ -12,7 +12,6 @@ import { dbWrite } from "@/db/client";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { ForbiddenError, failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -31,7 +30,7 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const agent = await charactersService.getById(agentId);
+    const agent = await c.var.deps.getCharacterById.execute(agentId);
     if (!agent) throw NotFoundError("Agent not found");
     if (agent.user_id !== user.id) {
       throw ForbiddenError("Not authorized to publish this agent");
@@ -89,7 +88,7 @@ app.post("/", async (c) => {
       })
       .where(eq(userCharacters.id, agentId));
 
-    await charactersService.invalidateCache(agentId);
+    await c.var.deps.invalidateCharacterCache.execute(agentId);
 
     logger.info("[Agent Publish API] Agent published", { agentId, userId: user.id });
 
@@ -118,7 +117,7 @@ app.delete("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const agent = await charactersService.getById(agentId);
+    const agent = await c.var.deps.getCharacterById.execute(agentId);
     if (!agent) throw NotFoundError("Agent not found");
     if (agent.user_id !== user.id) throw ForbiddenError("Not authorized");
 
@@ -131,7 +130,7 @@ app.delete("/", async (c) => {
       })
       .where(eq(userCharacters.id, agentId));
 
-    await charactersService.invalidateCache(agentId);
+    await c.var.deps.invalidateCharacterCache.execute(agentId);
 
     logger.info("[Agent Publish API] Agent unpublished", { agentId, userId: user.id });
 

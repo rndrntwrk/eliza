@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import type { NewUserCharacter } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
+import { toElizaCharacter } from "@/lib/domain/character/to-eliza-character";
 import { discordService } from "@/lib/services/discord";
 import type { ElizaCharacter } from "@/lib/types";
 import type { CategoryId, SortBy, SortOrder } from "@/lib/types/my-agents";
@@ -29,7 +29,10 @@ app.get("/", async (c) => {
     const sortBy = (c.req.query("sortBy") || "newest") as SortBy;
     const order = (c.req.query("order") || "desc") as SortOrder;
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const limit = Math.min(1000, Math.max(1, parseInt(c.req.query("limit") || "30", 10)));
+    const limit = Math.min(
+      1000,
+      Math.max(1, parseInt(c.req.query("limit") || "30", 10)),
+    );
 
     logger.debug("[My Agents API] Search request:", {
       userId: user.id,
@@ -41,15 +44,17 @@ app.get("/", async (c) => {
       limit,
     });
 
-    let characters = await charactersService.listByUser(user.id);
+    let characters = await c.var.deps.listCharactersByUser.execute(user.id);
 
     if (search) {
       const query = search.toLowerCase();
       characters = characters.filter(
         (char) =>
           char.name.toLowerCase().includes(query) ||
-          (typeof char.bio === "string" && char.bio.toLowerCase().includes(query)) ||
-          (Array.isArray(char.bio) && char.bio.some((b) => b.toLowerCase().includes(query))),
+          (typeof char.bio === "string" &&
+            char.bio.toLowerCase().includes(query)) ||
+          (Array.isArray(char.bio) &&
+            char.bio.some((b) => b.toLowerCase().includes(query))),
       );
     }
     if (category) {
@@ -125,13 +130,15 @@ app.post("/", async (c) => {
     const elizaCharacter = (await c.req.json()) as ElizaCharacter;
 
     // Normalize isPublic to ensure consistency between is_public column and character_data
-    const isPublic = typeof elizaCharacter.isPublic === "boolean" ? elizaCharacter.isPublic : false;
+    const isPublic =
+      typeof elizaCharacter.isPublic === "boolean"
+        ? elizaCharacter.isPublic
+        : false;
 
-    const characterDataRecord: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(elizaCharacter)) {
-      characterDataRecord[key] = value;
-    }
-    characterDataRecord.isPublic = isPublic;
+    const characterDataRecord: Record<string, unknown> = {
+      ...(elizaCharacter as unknown as Record<string, unknown>),
+      isPublic,
+    };
 
     const newCharacter: NewUserCharacter = {
       organization_id: user.organization_id,
@@ -140,7 +147,10 @@ app.post("/", async (c) => {
       username: elizaCharacter.username ?? null,
       system: elizaCharacter.system ?? null,
       bio: elizaCharacter.bio,
-      message_examples: (elizaCharacter.messageExamples ?? []) as Record<string, unknown>[][],
+      message_examples: (elizaCharacter.messageExamples ?? []) as Record<
+        string,
+        unknown
+      >[][],
       post_examples: elizaCharacter.postExamples ?? [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
@@ -156,7 +166,7 @@ app.post("/", async (c) => {
       source: "cloud",
     };
 
-    const character = await charactersService.create(newCharacter);
+    const character = await c.var.deps.createCharacter.execute(newCharacter);
 
     discordService
       .logCharacterCreated({
@@ -165,14 +175,16 @@ app.post("/", async (c) => {
         userName: user.email || null,
         userId: user.id,
         organizationName: user.organization.name ?? "",
-        bio: Array.isArray(elizaCharacter.bio) ? elizaCharacter.bio.join(" ") : elizaCharacter.bio,
+        bio: Array.isArray(elizaCharacter.bio)
+          ? elizaCharacter.bio.join(" ")
+          : elizaCharacter.bio,
         plugins: elizaCharacter.plugins,
       })
       .catch((error) => {
         logger.error("[CharacterCreate] Failed to log to Discord:", error);
       });
 
-    return c.json(charactersService.toElizaCharacter(character));
+    return c.json(toElizaCharacter(character));
   } catch (error) {
     return failureResponse(c, error);
   }

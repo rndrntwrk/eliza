@@ -10,7 +10,6 @@ import { memoryTable } from "@/db/schemas/eliza";
 import { elizaRoomCharactersTable } from "@/db/schemas/eliza-room-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -23,7 +22,7 @@ app.get("/", async (c) => {
     if (!uuidPattern.test(id)) {
       return c.json({ success: false, error: "Invalid character id" }, 400);
     }
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await c.var.deps.getCharacterByIdForUser.execute(id, user.id);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }

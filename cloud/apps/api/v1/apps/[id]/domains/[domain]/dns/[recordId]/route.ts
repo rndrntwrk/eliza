@@ -8,7 +8,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
 import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
@@ -39,7 +38,7 @@ async function loadCloudflareManagedDomain(c: AppContext) {
     return { error: "missing path params", status: 400 as const };
   }
 
-  const appRow = await appsService.getById(appId);
+  const appRow = await c.var.deps.getAppById.execute(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
   }

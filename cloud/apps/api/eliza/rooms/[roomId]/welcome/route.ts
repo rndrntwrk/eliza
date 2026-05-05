@@ -7,33 +7,12 @@
  */
 
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import { v4 as uuidv4 } from "uuid";
 import { entitiesRepository, memoriesRepository } from "@/db/repositories";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { roomsService } from "@/lib/services/agents/rooms";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-
-const DEFAULT_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
-const ANON_SESSION_COOKIE = "eliza-anon-session";
-
-async function resolveUserId(c: AppContext): Promise<string | null> {
-  try {
-    const u = await requireUserOrApiKey(c);
-    return u.id;
-  } catch {
-    const token = getCookie(c, ANON_SESSION_COOKIE);
-    if (!token) return null;
-    const session = await anonymousSessionsService.getByToken(token);
-    if (!session) return null;
-    const user = await usersService.getById(session.user_id);
-    if (!user || !user.is_anonymous) return null;
-    return user.id;
-  }
-}
+import type { AppEnv } from "@/types/cloud-worker-env";
+import { DEFAULT_AGENT_ID, resolveRoomUserId } from "../../_auth";
 
 const app = new Hono<AppEnv>();
 
@@ -44,7 +23,7 @@ app.post("/", async (c) => {
 
   if (!text?.trim()) return c.json({ error: "text is required" }, 400);
 
-  const userId = await resolveUserId(c);
+  const userId = await resolveRoomUserId(c);
   if (!userId) return c.json({ error: "Authentication required" }, 401);
 
   const hasAccess = await roomsService.hasAccess(roomId, userId);
@@ -66,13 +45,15 @@ app.post("/", async (c) => {
     content: { text, source: "agent" },
   });
 
-  logger.info(`[Welcome API] Stored welcome message: ${messageId} in room ${roomId}`);
+  logger.info(
+    `[Welcome API] Stored welcome message: ${messageId} in room ${roomId}`,
+  );
   return c.json({ success: true, messageId: memory.id });
 });
 
 app.delete("/", async (c) => {
   const roomId = c.req.param("roomId") ?? "";
-  const userId = await resolveUserId(c);
+  const userId = await resolveRoomUserId(c);
   if (!userId) return c.json({ error: "Authentication required" }, 401);
 
   const hasAccess = await roomsService.hasAccess(roomId, userId);

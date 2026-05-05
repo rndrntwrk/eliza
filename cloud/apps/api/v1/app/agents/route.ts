@@ -13,7 +13,6 @@ import { userCharacters } from "@/db/schemas/user-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { charactersService } from "@/lib/services/characters/characters";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
@@ -151,7 +150,7 @@ app.post("/", async (c) => {
 
     let character;
     try {
-      character = await charactersService.create({
+      character = await c.var.deps.createCharacter.execute({
         name,
         bio: bio ? [bio] : [DEFAULT_AGENT_BIO],
         user_id: user.id,

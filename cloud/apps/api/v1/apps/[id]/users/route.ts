@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -24,7 +23,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : undefined;
 
     // Verify the app exists and belongs to the user's organization
-    const existingApp = await appsService.getById(id);
+    const existingApp = await c.var.deps.getAppById.execute(id);
 
     if (!existingApp) {
       return Response.json(
@@ -47,7 +46,7 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Get app users
-    const appUsers = await appsService.getAppUsers(id, limit);
+    const appUsers = await c.var.deps.getAppUsers.execute(id, limit);
 
     return Response.json({
       success: true,

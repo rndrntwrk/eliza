@@ -283,14 +283,109 @@ function attachInlineToonActionParams(
 	parsedToon.params = nextParams;
 }
 
+function splitPlannerActionList(actionsText: string): string[] {
+	const parts: string[] = [];
+	let start = 0;
+	let inParams = false;
+	let inJsonString = false;
+	let jsonEscape = false;
+	let jsonDepth = 0;
+	const lower = actionsText.toLowerCase();
+
+	for (let index = 0; index < actionsText.length; index += 1) {
+		if (lower.startsWith("<params", index)) {
+			inParams = true;
+			continue;
+		}
+		if (lower.startsWith("</params>", index)) {
+			inParams = false;
+			index += "</params>".length - 1;
+			continue;
+		}
+
+		const char = actionsText[index];
+		if (!inParams) {
+			if (inJsonString) {
+				if (jsonEscape) {
+					jsonEscape = false;
+				} else if (char === "\\") {
+					jsonEscape = true;
+				} else if (char === '"') {
+					inJsonString = false;
+				}
+			} else if (jsonDepth > 0 && char === '"') {
+				inJsonString = true;
+			} else if (char === "{") {
+				jsonDepth += 1;
+			} else if (char === "}" && jsonDepth > 0) {
+				jsonDepth -= 1;
+			}
+		}
+
+		if (char === "," && !inParams && jsonDepth === 0 && !inJsonString) {
+			parts.push(actionsText.slice(start, index));
+			start = index + 1;
+		}
+	}
+
+	parts.push(actionsText.slice(start));
+	return parts;
+}
+
+function parseInlinePlannerParams(
+	value: string,
+): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(value);
+		return isRecord(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function extractInlinePlannerActionParams(value: string): {
+	name: string;
+	params?: Record<string, unknown>;
+} {
+	const inlineJsonMatch = value.match(
+		/^\s*([A-Z][A-Z0-9_:-]*)\s+(\{[\s\S]*\})\s*$/i,
+	);
+	if (inlineJsonMatch) {
+		const params = parseInlinePlannerParams(inlineJsonMatch[2]);
+		if (params) {
+			return {
+				name: unwrapPlannerIdentifier(inlineJsonMatch[1]),
+				params,
+			};
+		}
+	}
+
+	const inlineParamsMatch = value.match(
+		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
+	);
+	if (inlineParamsMatch) {
+		return {
+			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
+			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+		};
+	}
+
+	return { name: unwrapPlannerIdentifier(value) };
+}
+
 export function extractPlannerActionNames(
 	parsedToon: Record<string, unknown>,
 ): string[] {
 	return (() => {
 		if (typeof parsedToon.actions === "string") {
-			return parsedToon.actions
-				.split(",")
-				.map((action) => unwrapPlannerIdentifier(String(action)))
+			return splitPlannerActionList(parsedToon.actions)
+				.map((action) => {
+					const { name, params } = extractInlinePlannerActionParams(
+						String(action),
+					);
+					attachInlineToonActionParams(parsedToon, name, params);
+					return name;
+				})
 				.filter((action) => action.length > 0);
 		}
 		if (Array.isArray(parsedToon.actions)) {
@@ -301,7 +396,11 @@ export function extractPlannerActionNames(
 						attachInlineToonActionParams(parsedToon, actionName, action.params);
 						return actionName;
 					}
-					return unwrapPlannerIdentifier(String(action));
+					const { name, params } = extractInlinePlannerActionParams(
+						String(action),
+					);
+					attachInlineToonActionParams(parsedToon, name, params);
+					return name;
 				})
 				.filter((action) => action.length > 0);
 		}

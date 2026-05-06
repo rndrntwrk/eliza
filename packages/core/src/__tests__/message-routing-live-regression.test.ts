@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseActionParams } from "../actions";
 import type { ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
+	extractPlannerActionNames,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
@@ -19,6 +21,29 @@ const logger = {
 };
 
 describe("live routing regressions", () => {
+	it("extracts inline params from planner action strings", () => {
+		const shellPlan: Record<string, unknown> = {
+			actions: 'SHELL_COMMAND <params>{"command":"df -h"}</params>',
+			params: {},
+		};
+		expect(extractPlannerActionNames(shellPlan)).toEqual(["SHELL_COMMAND"]);
+		expect(parseActionParams(shellPlan.params).get("SHELL_COMMAND")).toEqual({
+			command: "df -h",
+		});
+
+		const appPlan: Record<string, unknown> = {
+			actions:
+				'APP {"mode":"create","app":"normie-slider","intent":"build, verify, and report"}',
+			params: {},
+		};
+		expect(extractPlannerActionNames(appPlan)).toEqual(["APP"]);
+		expect(parseActionParams(appPlan.params).get("APP")).toEqual({
+			mode: "create",
+			app: "normie-slider",
+			intent: "build, verify, and report",
+		});
+	});
+
 	it("collapses duplicate visible REPLY planner actions", () => {
 		expect(
 			stripReplyWhenActionOwnsTurn(

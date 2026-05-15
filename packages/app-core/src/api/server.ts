@@ -134,6 +134,7 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 import { handleTrainingBenchmarksRoute } from "./training-benchmarks";
+import { bridgeSessionAuthToUpstream } from "./server-upstream-auth-bridge";
 
 // Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
 // Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
@@ -958,6 +959,11 @@ export function patchHttpCreateServerForCompat(
 
         try {
           if (await handleCompatRoute(req, res, state)) {
+            return;
+          }
+          if (
+            !(await bridgeSessionAuthToUpstream(req, res, state, pathname))
+          ) {
             return;
           }
         } catch (err) {

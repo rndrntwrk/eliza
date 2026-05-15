@@ -4,6 +4,7 @@ const SCRIPT_START = Date.now();
 import "@elizaos/shared";
 import { getLogPrefix } from "@elizaos/shared";
 import {
+  describeNonFatalUnhandledRejection,
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "./error-handlers.js";
@@ -483,7 +484,7 @@ async function main() {
 process.on("unhandledRejection", (reason) => {
   if (shouldIgnoreUnhandledRejection(reason)) {
     console.warn(
-      `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
+      `${getLogPrefix()} ${describeNonFatalUnhandledRejection(reason)}`,
     );
     return;
   }

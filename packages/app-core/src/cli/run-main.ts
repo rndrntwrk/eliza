@@ -5,6 +5,7 @@ import {
   setRestartHandler,
 } from "@elizaos/shared";
 import {
+  describeNonFatalUnhandledRejection,
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
 } from "../runtime/error-handlers";
@@ -65,7 +66,7 @@ export async function runCli(argv: string[] = process.argv) {
   process.on("unhandledRejection", (reason) => {
     if (shouldIgnoreUnhandledRejection(reason)) {
       console.warn(
-        `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
+        `${getLogPrefix()} ${describeNonFatalUnhandledRejection(reason)}`,
       );
       return;
     }

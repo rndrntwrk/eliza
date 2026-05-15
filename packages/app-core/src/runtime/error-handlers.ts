@@ -17,17 +17,35 @@ function hasInsufficientCreditsSignal(input: string): boolean {
   );
 }
 
+function hasProviderNoOutputSignal(input: string): boolean {
+  return /AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError|AI_InvalidPromptError|Invalid prompt/i.test(
+    input,
+  );
+}
+
+export function describeNonFatalUnhandledRejection(
+  reason: unknown,
+): string | null {
+  const formatted = formatUncaughtError(reason);
+  if (!hasProviderNoOutputSignal(formatted)) {
+    return null;
+  }
+
+  if (hasInsufficientCreditsSignal(formatted)) {
+    return "Provider credits appear exhausted; request failed without output. Top up credits and retry.";
+  }
+
+  return "Provider request failed without output; request should fail closed without restarting.";
+}
+
 /**
- * Returns `true` when the rejection looks like an AI provider credit-exhaustion
- * error — these are noisy but not fatal, so callers should warn instead of crash.
+ * Returns `true` when the rejection looks like an AI provider stream/generation
+ * failure. These are request-scoped failures, so callers should warn instead
+ * of restarting the host process.
  */
 export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
   const formatted = formatUncaughtError(reason);
-  if (
-    !/AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
-      formatted,
-    )
-  ) {
+  if (!hasProviderNoOutputSignal(formatted)) {
     return false;
   }
 
@@ -61,5 +79,5 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
     current = (current as { cause?: unknown }).cause;
   }
 
-  return false;
+  return true;
 }

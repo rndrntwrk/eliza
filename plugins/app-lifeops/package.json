@@ -19,6 +19,18 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./platform": {
+      "types": "./src/platform/index.ts",
+      "bun": "./src/platform/index.ts",
+      "import": "./src/platform/index.ts",
+      "default": "./src/platform/index.ts"
+    },
+    "./widgets": {
+      "types": "./src/widgets/index.ts",
+      "bun": "./src/widgets/index.ts",
+      "import": "./src/widgets/index.ts",
+      "default": "./src/widgets/index.ts"
+    },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",

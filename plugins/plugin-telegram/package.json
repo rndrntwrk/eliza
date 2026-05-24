@@ -17,7 +17,8 @@
       "import": "./dist/*.js",
       "default": "./dist/*.js",
       "types": "./dist/*.d.ts"
-    }
+    },
+    "./account-auth-service": "./dist/account-auth-service.js"
   },
   "files": [
     "dist"

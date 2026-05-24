@@ -1,8 +1,12 @@
 import {
   dispatchAppEmoteEvent,
+  getBootConfig,
+  getVrmBackgroundUrl,
   getVrmPreviewUrl,
   getVrmUrl,
+  resolveAppAssetUrl,
   resolveCharacterGreetingAnimation,
+  useApp,
   useCompanionSceneConfig,
   useRenderGuard,
   useTranslation,
@@ -27,8 +31,8 @@ import { VrmStage } from "./VrmStage";
 
 const COMPANION_ZOOM_WHEEL_SENSITIVITY = 1 / 720;
 const COMPANION_ZOOM_PINCH_SENSITIVITY = 2.35;
-const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v1";
-const DEFAULT_COMPANION_ZOOM = 0.95;
+const COMPANION_ZOOM_STORAGE_KEY = "eliza.companion.zoom.v2";
+const DEFAULT_COMPANION_ZOOM = 0.25;
 const COMPANION_TELEPORT_GREETING_DELAY_MS = 400;
 const CAMERA_DRAG_IGNORE_SELECTOR =
   'button, a, label, input, textarea, select, option, [role="button"], [role="listbox"], [role="tab"], [aria-expanded], [aria-haspopup], [contenteditable="true"], [data-no-camera-drag="true"]';
@@ -113,6 +117,17 @@ function clampCompanionZoom(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function getCameraDistanceScale(index: number): number {
+  const assets = getBootConfig().vrmAssets as Array<{
+    cameraDistanceScale?: unknown;
+  }>;
+  const asset = assets[index > 0 ? index - 1 : 0];
+  const scale = asset?.cameraDistanceScale;
+  return typeof scale === "number" && Number.isFinite(scale) && scale > 0
+    ? scale
+    : 1;
+}
+
 function loadStoredCompanionZoom(): number {
   if (typeof localStorage === "undefined") return DEFAULT_COMPANION_ZOOM;
   try {
@@ -156,12 +171,18 @@ function CompanionSceneSurface({
   const {
     selectedVrmIndex,
     customVrmUrl,
+    customWorldUrl,
     uiTheme,
     tab,
     companionVrmPowerMode,
     companionHalfFramerateMode,
     companionAnimateWhenHidden,
   } = useCompanionSceneConfig();
+  const { customBackgroundUrl: configuredCustomBackgroundUrl } = useApp();
+  const customBackgroundUrl =
+    typeof configuredCustomBackgroundUrl === "string"
+      ? configuredCustomBackgroundUrl
+      : "";
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageEnginesRef = useRef(new Set<VrmEngine>());
@@ -401,6 +422,16 @@ function CompanionSceneSurface({
     selectedVrmIndex > 0
       ? getVrmPreviewUrl(safeSelectedVrmIndex)
       : getVrmPreviewUrl(1);
+  const backgroundImageUrl =
+    customBackgroundUrl || getVrmBackgroundUrl(safeSelectedVrmIndex);
+  const worldUrl =
+    customWorldUrl ||
+    resolveAppAssetUrl(
+      uiTheme === "dark"
+        ? "worlds/companion-night.spz"
+        : "worlds/companion-day.spz",
+    );
+  const cameraDistanceScale = getCameraDistanceScale(safeSelectedVrmIndex);
   const teleportKey = vrmPath;
   const [teleportCompletedKey, setTeleportCompletedKey] = useState<
     string | null
@@ -637,8 +668,11 @@ function CompanionSceneSurface({
             active={active}
             vrmPath={vrmPath}
             fallbackPreviewUrl={fallbackPreviewUrl}
+            backgroundImageUrl={backgroundImageUrl}
+            worldUrl={worldUrl}
             environmentTheme={uiTheme === "dark" ? "dark" : "light"}
             cameraProfile="companion"
+            cameraDistanceScale={cameraDistanceScale}
             companionVrmPowerMode={companionVrmPowerMode}
             companionHalfFramerateMode={companionHalfFramerateMode}
             companionAnimateWhenHidden={companionAnimateWhenHidden}

@@ -1,5 +1,6 @@
 export * from "./useActivityEvents";
 export * from "./useAutomationDeepLink";
+export * from "./useAuthStatus";
 export * from "./useBugReport";
 export * from "./useChatAvatarVoiceBridge";
 export * from "./useConnectorAccounts";

@@ -687,6 +687,7 @@ export function App() {
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
     if (backendConnection?.state !== "connected") return;
+    if (!isPopout && authState.phase !== "authenticated") return;
 
     const report = () => {
       void fetchWithCsrf("/api/apps/overlay-presence", {
@@ -710,7 +711,13 @@ export function App() {
         /* ignore */
       });
     };
-  }, [activeOverlayApp, backendConnection?.state, startupCoordinator.phase]);
+  }, [
+    activeOverlayApp,
+    authState.phase,
+    backendConnection?.state,
+    isPopout,
+    startupCoordinator.phase,
+  ]);
 
   const [customActionsPanelOpen, setCustomActionsPanelOpen] = useState(false);
   const [customActionsEditorOpen, setCustomActionsEditorOpen] = useState(false);
@@ -1219,6 +1226,20 @@ export function App() {
         </BugReportProvider>
       );
     }
+    if (authState.phase === "loading") {
+      return (
+        <BugReportProvider value={bugReport}>
+          <div
+            data-testid="auth-loading-gate"
+            className="flex h-[100dvh] w-full items-center justify-center bg-bg text-sm text-muted-foreground"
+            aria-live="polite"
+          >
+            Loading...
+          </div>
+          <BugReportModal />
+        </BugReportProvider>
+      );
+    }
     if (authState.phase === "unauthenticated") {
       return (
         <BugReportProvider value={bugReport}>
@@ -1227,8 +1248,6 @@ export function App() {
         </BugReportProvider>
       );
     }
-    // While loading the auth state we allow the main shell to continue
-    // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
   // Coordinator is at "ready" — the app shell renders. No legacy onboarding

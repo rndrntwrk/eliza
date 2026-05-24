@@ -15,6 +15,7 @@ import {
   type ConversationMode,
   client,
   type ImageAttachment,
+  type OperatorActionMessagePayload,
 } from "../api";
 import {
   expandSavedCustomCommand,
@@ -1181,6 +1182,98 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
 
+  const logConversationOperatorAction = useCallback(
+    async (payload: OperatorActionMessagePayload): Promise<boolean> => {
+      let convId = activeConversationIdRef.current ?? activeConversationId;
+      if (!convId) {
+        try {
+          const { conversation: rawConversation } =
+            await client.createConversation();
+          if (!isConversationRecord(rawConversation)) {
+            throw new Error(
+              "Conversation creation returned an invalid payload.",
+            );
+          }
+          const conversation = rawConversation;
+          setConversations((prev) => [conversation, ...prev]);
+          setActiveConversationId(conversation.id);
+          activeConversationIdRef.current = conversation.id;
+          setConversationMessages([]);
+          convId = conversation.id;
+        } catch {
+          return false;
+        }
+      }
+
+      const appendLoggedAction = (message: ConversationMessage) => {
+        setConversationMessages((prev) => {
+          if (prev.some((entry) => entry.id === message.id)) return prev;
+          return [...prev, message];
+        });
+      };
+
+      const logForConversation = async (conversationId: string) => {
+        client.sendWsMessage({
+          type: "active-conversation",
+          conversationId,
+        });
+        const { message } = await client.logConversationOperatorAction(
+          conversationId,
+          payload,
+        );
+        appendLoggedAction(message);
+        return message;
+      };
+
+      try {
+        await logForConversation(convId);
+        void loadConversations();
+        return true;
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 404) {
+          try {
+            const { conversation: rawConversation } =
+              await client.createConversation();
+            if (!isConversationRecord(rawConversation)) {
+              throw new Error(
+                "Conversation creation returned an invalid payload.",
+              );
+            }
+            const conversation = rawConversation;
+            setConversations((prev) => [conversation, ...prev]);
+            setActiveConversationId(conversation.id);
+            activeConversationIdRef.current = conversation.id;
+            setConversationMessages([]);
+            await logForConversation(conversation.id);
+            void loadConversations();
+            return true;
+          } catch {
+            return false;
+          }
+        }
+
+        setActionNotice(
+          `Action executed, but logging failed: ${
+            err instanceof Error ? err.message : "unknown error"
+          }`,
+          "info",
+          2600,
+        );
+        return false;
+      }
+    },
+    [
+      activeConversationId,
+      activeConversationIdRef,
+      loadConversations,
+      setActionNotice,
+      setActiveConversationId,
+      setConversationMessages,
+      setConversations,
+    ],
+  );
+
   const handleChatStop = useCallback(() => {
     interruptActiveChatPipeline();
 
@@ -1353,6 +1446,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     sendChatText,
     handleChatSend,
     sendActionMessage,
+    logConversationOperatorAction,
     handleChatStop,
     handleChatRetry,
     handleChatEdit,

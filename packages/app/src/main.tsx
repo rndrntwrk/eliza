@@ -134,7 +134,7 @@ import {
   APP_URL_SCHEME,
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
-import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { APP_CHARACTER_CATALOG, buildAppVrmAssets } from "./character-catalog";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -265,9 +265,7 @@ import { getStylePresets } from "@elizaos/shared";
 // Derive VRM roster from STYLE_PRESETS so character names stay in one place.
 const APP_STYLE_PRESETS = getStylePresets();
 
-const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
-  .sort((a, b) => a.avatarIndex - b.avatarIndex)
-  .map((p) => ({ title: p.name, slug: `${APP_NAMESPACE}-${p.avatarIndex}` }));
+const APP_VRM_ASSETS = buildAppVrmAssets(APP_STYLE_PRESETS);
 
 const appBootConfig: AppBootConfig = {
   branding: APP_BRANDING,

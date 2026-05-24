@@ -28,6 +28,7 @@ import type { BrandingConfig } from "./branding";
 export interface BundledVrmAsset {
   title: string;
   slug: string;
+  cameraDistanceScale?: number;
 }
 
 /** Lightweight character catalog data passed from the host app. */

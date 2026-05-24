@@ -36,6 +36,11 @@ import type {
   AgentEventsResponse,
   AgentSelfStatusSnapshot,
   AgentStatus,
+  AliceOperatorActionStep,
+  AliceOperatorPlanResponse,
+  Arcade555GameActionResponse,
+  Arcade555GameStateResponse,
+  Arcade555GamesCatalogResponse,
   CharacterData,
   CharacterHistoryResponse,
   CodingAgentScratchWorkspace,
@@ -45,6 +50,7 @@ import type {
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
+  EmoteInfo,
   ExperienceGraphResponse,
   ExperienceListQuery,
   ExperienceListResponse,
@@ -52,6 +58,14 @@ import type {
   ExperienceRecord,
   ExperienceUpdateInput,
   ExtensionStatus,
+  HyperscapeActionResponse,
+  HyperscapeAgentGoalResponse,
+  HyperscapeEmbeddedAgentControlAction,
+  HyperscapeEmbeddedAgentMutationResponse,
+  HyperscapeEmbeddedAgentsResponse,
+  HyperscapeJsonValue,
+  HyperscapeQuickActionsResponse,
+  HyperscapeScriptedRole,
   LogsFilter,
   LogsResponse,
   PluginInfo,
@@ -185,6 +199,31 @@ function logSettingsClient(
 }
 
 const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
+const ALICE_OPERATOR_EXECUTE_TIMEOUT_MS = 45_000;
+
+function getOrCreateArcade555SessionId(preferredSessionId?: string): string {
+  const explicit = preferredSessionId?.trim();
+  if (explicit) return explicit;
+
+  const fallback =
+    globalThis.crypto?.randomUUID?.() ??
+    `arcade555-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+
+  if (typeof localStorage === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const stored = localStorage.getItem("milady.arcade555.sessionId")?.trim();
+    if (stored) return stored;
+    localStorage.setItem("milady.arcade555.sessionId", fallback);
+  } catch {
+    // localStorage may be unavailable in private mode or test shims.
+  }
+  return fallback;
+}
 
 // ---------------------------------------------------------------------------
 // Bootstrap exchange types
@@ -399,6 +438,56 @@ declare module "./client-base" {
       mode: string,
     ): Promise<{ ok: boolean; tradePermissionMode: string }>;
     playEmote(emoteId: string): Promise<{ ok: boolean }>;
+    getEmotes(): Promise<{ emotes: EmoteInfo[] }>;
+    getArcade555GamesCatalog(input?: {
+      sessionId?: string;
+      includeBeta?: boolean;
+    }): Promise<Arcade555GamesCatalogResponse>;
+    playArcade555Game(input: {
+      gameId: string;
+      mode?: "standard" | "ranked" | "spectate" | "solo" | "agent";
+      sessionId?: string;
+    }): Promise<Arcade555GameActionResponse>;
+    switchArcade555Game(input: {
+      gameId: string;
+      mode?: "standard" | "ranked" | "spectate" | "solo" | "agent";
+      sessionId?: string;
+    }): Promise<Arcade555GameActionResponse>;
+    stopArcade555Game(input?: {
+      sessionId?: string;
+    }): Promise<Arcade555GameActionResponse>;
+    getArcade555GameState(input?: {
+      sessionId?: string;
+    }): Promise<Arcade555GameStateResponse>;
+    executeAliceOperatorPlan(input: {
+      steps: AliceOperatorActionStep[];
+      stopOnFailure?: boolean;
+    }): Promise<AliceOperatorPlanResponse>;
+    listHyperscapeEmbeddedAgents(): Promise<HyperscapeEmbeddedAgentsResponse>;
+    createHyperscapeEmbeddedAgent(input: {
+      characterId: string;
+      autoStart?: boolean;
+      scriptedRole?: HyperscapeScriptedRole;
+    }): Promise<HyperscapeEmbeddedAgentMutationResponse>;
+    controlHyperscapeEmbeddedAgent(
+      characterId: string,
+      action: HyperscapeEmbeddedAgentControlAction,
+    ): Promise<HyperscapeEmbeddedAgentMutationResponse>;
+    sendHyperscapeEmbeddedAgentCommand(
+      characterId: string,
+      command: string,
+      data?: { [key: string]: HyperscapeJsonValue },
+    ): Promise<HyperscapeActionResponse>;
+    sendHyperscapeAgentMessage(
+      agentId: string,
+      content: string,
+    ): Promise<HyperscapeActionResponse>;
+    getHyperscapeAgentGoal(
+      agentId: string,
+    ): Promise<HyperscapeAgentGoalResponse>;
+    getHyperscapeAgentQuickActions(
+      agentId: string,
+    ): Promise<HyperscapeQuickActionsResponse>;
     runTerminalCommand(command: string): Promise<{ ok: boolean }>;
     getOnboardingStatus(): Promise<{
       complete: boolean;
@@ -1021,6 +1110,177 @@ ElizaClient.prototype.playEmote = async function (this: ElizaClient, emoteId) {
   });
 };
 
+ElizaClient.prototype.getEmotes = async function (this: ElizaClient) {
+  return this.fetch("/api/emotes");
+};
+
+ElizaClient.prototype.getArcade555GamesCatalog = async function (
+  this: ElizaClient,
+  input?,
+) {
+  const sessionId = getOrCreateArcade555SessionId(input?.sessionId);
+  return this.fetch(
+    `/api/agent/v1/sessions/${encodeURIComponent(sessionId)}/games/catalog`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        includeBeta: input?.includeBeta ?? true,
+      }),
+    },
+  );
+};
+
+ElizaClient.prototype.playArcade555Game = async function (
+  this: ElizaClient,
+  input,
+) {
+  const sessionId = getOrCreateArcade555SessionId(input.sessionId);
+  return this.fetch(
+    `/api/agent/v1/sessions/${encodeURIComponent(sessionId)}/games/play`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        gameId: input.gameId,
+        mode: input.mode ?? "agent",
+      }),
+    },
+  );
+};
+
+ElizaClient.prototype.switchArcade555Game = async function (
+  this: ElizaClient,
+  input,
+) {
+  const sessionId = getOrCreateArcade555SessionId(input.sessionId);
+  return this.fetch(
+    `/api/agent/v1/sessions/${encodeURIComponent(sessionId)}/games/switch`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        gameId: input.gameId,
+        mode: input.mode ?? "agent",
+      }),
+    },
+  );
+};
+
+ElizaClient.prototype.stopArcade555Game = async function (
+  this: ElizaClient,
+  input?,
+) {
+  const sessionId = getOrCreateArcade555SessionId(input?.sessionId);
+  return this.fetch(
+    `/api/agent/v1/sessions/${encodeURIComponent(sessionId)}/games/stop`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+  );
+};
+
+ElizaClient.prototype.getArcade555GameState = async function (
+  this: ElizaClient,
+  input?,
+) {
+  const sessionId = getOrCreateArcade555SessionId(input?.sessionId);
+  return this.fetch(
+    `/api/agent/v1/sessions/${encodeURIComponent(sessionId)}/games/state`,
+  );
+};
+
+ElizaClient.prototype.executeAliceOperatorPlan = async function (
+  this: ElizaClient,
+  input,
+) {
+  return this.fetch(
+    "/api/alice/operator/execute",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        steps: input.steps,
+        ...(input.stopOnFailure !== undefined
+          ? { stopOnFailure: input.stopOnFailure }
+          : {}),
+      }),
+    },
+    { timeoutMs: ALICE_OPERATOR_EXECUTE_TIMEOUT_MS },
+  );
+};
+
+ElizaClient.prototype.listHyperscapeEmbeddedAgents = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/apps/hyperscape/embedded-agents");
+};
+
+ElizaClient.prototype.createHyperscapeEmbeddedAgent = async function (
+  this: ElizaClient,
+  input,
+) {
+  return this.fetch("/api/apps/hyperscape/embedded-agents", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+};
+
+ElizaClient.prototype.controlHyperscapeEmbeddedAgent = async function (
+  this: ElizaClient,
+  characterId,
+  action,
+) {
+  return this.fetch(
+    `/api/apps/hyperscape/embedded-agents/${encodeURIComponent(characterId)}/${action}`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.sendHyperscapeEmbeddedAgentCommand = async function (
+  this: ElizaClient,
+  characterId,
+  command,
+  data?,
+) {
+  return this.fetch(
+    `/api/apps/hyperscape/embedded-agents/${encodeURIComponent(characterId)}/command`,
+    {
+      method: "POST",
+      body: JSON.stringify({ command, data }),
+    },
+  );
+};
+
+ElizaClient.prototype.sendHyperscapeAgentMessage = async function (
+  this: ElizaClient,
+  agentId,
+  content,
+) {
+  return this.fetch(
+    `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/message`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    },
+  );
+};
+
+ElizaClient.prototype.getHyperscapeAgentGoal = async function (
+  this: ElizaClient,
+  agentId,
+) {
+  return this.fetch(
+    `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/goal`,
+  );
+};
+
+ElizaClient.prototype.getHyperscapeAgentQuickActions = async function (
+  this: ElizaClient,
+  agentId,
+) {
+  return this.fetch(
+    `/api/apps/hyperscape/agents/${encodeURIComponent(agentId)}/quick-actions`,
+  );
+};
+
 ElizaClient.prototype.runTerminalCommand = async function (
   this: ElizaClient,
   command,
@@ -1377,6 +1637,17 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   logSettingsClient("GET /api/config → start", {
     baseUrl: this.getBaseUrl(),
   });
+  const auth = await this.getAuthStatus().catch(() => null);
+  if (
+    auth?.required === true &&
+    auth.authenticated === false &&
+    auth.localAccess !== true
+  ) {
+    logSettingsClient("GET /api/config → skipped auth-gated browser", {
+      baseUrl: this.getBaseUrl(),
+    });
+    return {};
+  }
   const r = (await this.fetch("/api/config")) as Record<string, unknown>;
   const cloud = r.cloud as Record<string, unknown> | undefined;
   logSettingsClient("GET /api/config ← ok", {

@@ -132,14 +132,15 @@ export function ensureCompatApiAuthorized(
     return false;
   }
 
+  const providedToken = getProvidedApiToken(req);
+  if (providedToken && tokenMatches(expectedToken, providedToken)) return true;
+
+  // Alice: validate good static bearer tokens before applying failed-auth throttling.
   const ip = req.socket?.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     sendJsonError(res, 429, "Too many authentication attempts");
     return false;
   }
-
-  const providedToken = getProvidedApiToken(req);
-  if (providedToken && tokenMatches(expectedToken, providedToken)) return true;
 
   recordFailedAuth(ip);
   sendJsonError(res, 401, "Unauthorized");
@@ -152,7 +153,8 @@ const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /**
  * Cookie-aware authorisation gate. Tries (in order):
  *   1. valid `eliza_session` cookie → session in DB → authorised.
- *   2. session-id bearer header.
+ *   2. configured API token bearer header.
+ *   3. session-id bearer header.
  *
  * For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
  * MUST present a valid `x-eliza-csrf` header that matches the per-session
@@ -180,12 +182,6 @@ export async function ensureCompatApiAuthorizedAsync(
     skipCsrf?: boolean;
   },
 ): Promise<boolean> {
-  const ip = req.socket?.remoteAddress ?? null;
-  if (isAuthRateLimited(ip)) {
-    sendJsonError(res, 429, "Too many authentication attempts");
-    return false;
-  }
-
   if (isTrustedLocalRequest(req)) return true;
 
   const method = (req.method ?? "GET").toUpperCase();
@@ -213,16 +209,26 @@ export async function ensureCompatApiAuthorizedAsync(
     }
   }
 
-  // Bearer path — session id only.
+  // Bearer path — configured API token or session id.
   // Bearer-auth requests are exempt from CSRF (they're not cookie-bound).
   const provided = getProvidedApiToken(req);
   if (provided) {
+    const expectedToken = getCompatApiToken();
+    if (expectedToken && tokenMatches(expectedToken, provided)) return true;
+
     const sessionFromBearer = await findActiveSession(
       options.store,
       provided,
       options.now,
     ).catch(() => null);
     if (sessionFromBearer) return true;
+  }
+
+  // Alice: valid local, cookie, and bearer sessions bypass the failed-auth throttle.
+  const ip = req.socket?.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    sendJsonError(res, 429, "Too many authentication attempts");
+    return false;
   }
 
   recordFailedAuth(ip);

@@ -27,8 +27,8 @@ const target = targetIdx !== -1 ? args[targetIdx + 1] : "all";
 // --- Load all keyword JSON files ---
 
 function loadKeywordFiles() {
-  const files = readdirSync(keywordsDir).filter((f) =>
-    f.endsWith(".keywords.json"),
+  const files = readdirSync(keywordsDir).filter(
+    (f) => !f.startsWith("._") && f.endsWith(".keywords.json"),
   );
   if (files.length === 0) {
     console.error("No *.keywords.json files found in", keywordsDir);

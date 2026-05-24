@@ -197,18 +197,16 @@ export async function runPollingBackend(
         dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
-      // Token holder, but the server still says auth is required (e.g. the
-      // remote owner password has not been set yet, so /api/auth/me will
-      // return 401 with reason="remote_password_not_configured"). Don't
-      // loop polling forever — advance the coordinator to "ready" so the
-      // top-level auth gate can render LoginView with an actionable
-      // "Remote access blocked" message. Without this, the phone is stuck
-      // on the splash because every onboarding/runtime endpoint returns 401.
+      // Token holders with password/session auth still pending stay behind the startup auth gate.
+      // LoginView can now render directly from the auth-required startup phase,
+      // so advancing to ready here would only mount hydrating/dashboard effects
+      // that call protected endpoints before the user signs in.
       if (auth.required && !auth.authenticated && client.hasToken()) {
-        deps.setAuthRequired(false);
-        deps.setOnboardingComplete(true);
+        deps.setAuthRequired(true);
+        deps.setPairingEnabled(auth.pairingEnabled);
+        deps.setPairingExpiresAt(auth.expiresAt);
         deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
       const onboardingStatusRes = await client.getOnboardingStatus();
@@ -338,18 +336,14 @@ export async function runPollingBackend(
         client.hasToken() &&
         latestAuth.authenticated
       ) {
-        // Bearer-only token (paired but no password session). /api/auth/status
-        // returned authenticated:true but a downstream endpoint
-        // (onboarding-status, etc.) still 401s, or the server's auth rate
-        // limiter starts returning 429 ("Too many authentication attempts")
-        // because every poll re-checks bearer-vs-session. /api/auth/me responds
-        // with reason="remote_auth_required" in this state. Don't loop forever
-        // — advance to ready so the top-level auth gate can render LoginView
-        // with an actionable "Sign in" / "Remote access blocked" prompt.
-        deps.setAuthRequired(false);
-        deps.setOnboardingComplete(true);
+        // Bearer-only token (paired but no password session), or auth-rate 429
+        // caused by protected endpoint polling before the browser password
+        // session exists. Keep startup in the auth gate; do not enter ready.
+        deps.setAuthRequired(true);
+        deps.setPairingEnabled(latestAuth.pairingEnabled);
+        deps.setPairingExpiresAt(latestAuth.expiresAt);
         deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
       if (

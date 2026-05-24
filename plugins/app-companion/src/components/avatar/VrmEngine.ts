@@ -624,6 +624,7 @@ export class VrmEngine {
    * When true, only VRM idle/physics keep running (document hidden + user opt-in).
    */
   private minimalBackgroundMode = false;
+  private transparentEnvironmentBackground = false;
   private interactionEnabled = false;
   private interactionMode: InteractionMode = "free";
   private cameraProfile: CameraProfile = "chat";
@@ -1292,6 +1293,7 @@ export class VrmEngine {
         // Build construct environment (white void, floating screens, fog)
         this.mathEnvironment = new MathEnvironment();
         this.mathEnvironment.build(scene, "light");
+        this.applyTransparentEnvironmentBackground();
         const avatarRoot = new THREE.Group();
         avatarRoot.name = "AvatarRoot";
         scene.add(avatarRoot);
@@ -1626,13 +1628,40 @@ export class VrmEngine {
     this.cameraYawOffsetTarget = -offset * 0.7;
   }
 
+  private applyCameraDistanceScale(scale: number): void {
+    if (!this.camera || !Number.isFinite(scale) || scale <= 0 || scale === 1) {
+      return;
+    }
+    const offset = this.camera.position.clone().sub(this.lookAtTarget);
+    this.camera.position.copy(this.lookAtTarget).addScaledVector(offset, scale);
+    this.baseCameraPosition.copy(this.camera.position);
+    const distance = offset.length() * scale;
+    if (this.controls) {
+      this.controls.minDistance = Math.max(2.8, distance * 0.7);
+      this.controls.maxDistance = Math.max(12.8, distance * 1.8);
+      this.controls.update();
+    }
+  }
+
   async setWorldUrl(_url: string | null): Promise<void> {
     // World backgrounds removed — math environment managed separately.
+  }
+
+  setTransparentEnvironmentBackground(enabled: boolean): void {
+    this.transparentEnvironmentBackground = enabled;
+    this.applyTransparentEnvironmentBackground();
+  }
+
+  private applyTransparentEnvironmentBackground(): void {
+    this.mathEnvironment?.setSceneBackgroundEnabled(
+      !this.transparentEnvironmentBackground,
+    );
   }
 
   /** Switch the mathematical environment theme. */
   setEnvironmentTheme(theme: "light" | "dark"): void {
     this.mathEnvironment?.setTheme(theme);
+    this.applyTransparentEnvironmentBackground();
   }
   async playEmote(
     path: string,
@@ -1723,7 +1752,11 @@ export class VrmEngine {
     );
   }
 
-  async loadVrmFromUrl(url: string, name?: string): Promise<void> {
+  async loadVrmFromUrl(
+    url: string,
+    name?: string,
+    cameraDistanceScale = 1,
+  ): Promise<void> {
     await this.whenReady();
     if (!this.scene) throw new Error("VrmEngine not initialized");
     if (!this.camera) throw new Error("VrmEngine not initialized");
@@ -1810,6 +1843,7 @@ export class VrmEngine {
           (c) =>
             this.cameraManager.applyInteractionMode(c, this.interactionMode),
         );
+        this.applyCameraDistanceScale(cameraDistanceScale);
       }
     }
     try {

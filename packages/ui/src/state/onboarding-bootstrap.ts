@@ -6,6 +6,13 @@ import {
 } from "./persistence";
 export interface ExistingOnboardingProbeClient {
   apiAvailable: boolean;
+  getAuthStatus?: () => Promise<{
+    required?: boolean;
+    authenticated?: boolean;
+    localAccess?: boolean;
+    passwordConfigured?: boolean;
+  }>;
+  hasToken?: () => boolean;
   getOnboardingStatus: () => Promise<{ complete: boolean }>;
   getConfig: () => Promise<Record<string, unknown> | null | undefined>;
 }
@@ -54,6 +61,19 @@ export async function detectExistingOnboardingConnection(args: {
   timeoutMs: number;
 }): Promise<ExistingOnboardingProbeResult | null> {
   if (!args.client.apiAvailable) {
+    return null;
+  }
+
+  const auth = await args.client.getAuthStatus?.().catch(() => null);
+  const protectedSessionPending =
+    auth &&
+    auth.localAccess !== true &&
+    ((auth.required === true && auth.authenticated !== true) ||
+      (auth.passwordConfigured === true && args.client.hasToken?.() === true));
+  if (protectedSessionPending) {
+    // Auth-gated origins must not run protected onboarding probes before a browser session exists.
+    // /api/onboarding/status and /api/config are intentionally protected, so
+    // probing them here only creates noisy 401s and can trip auth rate limits.
     return null;
   }
 

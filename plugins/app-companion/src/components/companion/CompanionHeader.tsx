@@ -42,6 +42,8 @@ export interface CompanionHeaderProps {
   chatAgentVoiceMuted?: boolean;
   onToggleVoiceMute?: () => void;
   onNewChat?: () => void;
+  /** Shown with the companion controls (e.g. Alice Go Live). */
+  companionControlsExtras?: ReactNode;
   /** Shown in the shell header right cluster (e.g. inference / cloud alert). */
   rightExtras?: ReactNode;
 }
@@ -63,6 +65,7 @@ export const CompanionHeader = memo(function CompanionHeader(
     chatAgentVoiceMuted = false,
     onToggleVoiceMute,
     onNewChat,
+    companionControlsExtras,
     rightExtras,
   } = props;
 
@@ -107,7 +110,7 @@ export const CompanionHeader = memo(function CompanionHeader(
 
   return (
     <header
-      className="absolute inset-x-0 top-0 z-10 overflow-visible"
+      className="companion-shell-header absolute inset-x-0 top-0 z-10 overflow-visible"
       data-no-camera-drag="true"
     >
       <div className="px-2 py-1">
@@ -176,6 +179,7 @@ export const CompanionHeader = memo(function CompanionHeader(
                 data-no-camera-drag="true"
               >
                 <div className="inline-flex items-center gap-2">
+                  {companionControlsExtras}
                   {onToggleVoiceMute ? (
                     <Button
                       size="icon"

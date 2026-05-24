@@ -16,7 +16,7 @@
     "react",
     "design-system"
   ],
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "files": [
     "dist"
   ],
@@ -37,20 +37,42 @@
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./dist/index.js",
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
     "./package.json": "./package.json",
-    "./styles": "./dist/styles.js",
-    "./styles/*.css": "./dist/styles/*.css",
-    "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
-    "./config/app-config": "./dist/config/app-config.js",
-    "./onboarding-config": "./dist/onboarding-config.js",
-    "./dist/styles/*.css": "./dist/styles/*.css",
-    "./styles/*.css": "./dist/styles/*.css",
-    "./*.css": "./dist/*.css",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
+    },
+    "./styles": {
+      "types": "./src/styles.ts",
+      "bun": "./src/styles.ts",
+      "import": "./src/styles.ts",
+      "default": "./src/styles.ts"
+    },
+    "./api/client-types-cloud": {
+      "types": "./src/api/client-types-cloud.ts",
+      "bun": "./src/api/client-types-cloud.ts",
+      "import": "./src/api/client-types-cloud.ts",
+      "default": "./src/api/client-types-cloud.ts"
+    },
+    "./config/app-config": {
+      "types": "./src/config/app-config.ts",
+      "bun": "./src/config/app-config.ts",
+      "import": "./src/config/app-config.ts",
+      "default": "./src/config/app-config.ts"
+    },
+    "./onboarding-config": {
+      "types": "./src/onboarding-config.ts",
+      "bun": "./src/onboarding-config.ts",
+      "import": "./src/onboarding-config.ts",
+      "default": "./src/onboarding-config.ts"
     }
   },
   "peerDependencies": {
@@ -102,5 +124,6 @@
     "access": "public",
     "directory": "dist"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./src/index.ts",
+  "_aliceSourceMainSentinel": "v1"
 }

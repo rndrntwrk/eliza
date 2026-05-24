@@ -45,3 +45,9 @@ export { serverTable } from "./server";
 export { sessionSummaries } from "./sessionSummaries";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";
+
+// [milaidy:plugin-sql-schema-pglite-errors-reexport]
+// packages/agent/src/runtime/eliza.ts imports plugin-sql through the schema
+// barrel during the browser Vite build. The PGlite error helpers live in
+// ../pglite/errors, so re-export them here for static named-import binding.
+export * from "../pglite/errors";

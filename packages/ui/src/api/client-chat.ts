@@ -42,6 +42,7 @@ import type {
   MemoryRememberResponse,
   MemorySearchResponse,
   MemoryStatsResponse,
+  OperatorActionMessagePayload,
   PostWorkbenchVfsPromoteToCloudRequest,
   PromoteVfsToCloudContainerRequest,
   PromoteVfsToCloudContainerResponse,
@@ -233,6 +234,10 @@ declare module "./client-base" {
       messageId: string,
       options?: { inclusive?: boolean },
     ): Promise<{ ok: boolean; deletedCount: number }>;
+    logConversationOperatorAction(
+      id: string,
+      payload: OperatorActionMessagePayload,
+    ): Promise<{ message: ConversationMessage }>;
     sendConversationMessage(
       id: string,
       text: string,
@@ -811,6 +816,28 @@ ElizaClient.prototype.truncateConversationMessages = async function (
       }),
     },
   );
+};
+
+ElizaClient.prototype.logConversationOperatorAction = async function (
+  this: ElizaClient,
+  id,
+  payload,
+) {
+  const response = await this.fetch<{ message: ConversationMessage }>(
+    `/api/conversations/${encodeURIComponent(id)}/operator-action`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+  const message = response.message;
+  if (message.role !== "assistant") {
+    return { message };
+  }
+  const text = this.normalizeAssistantText(message.text);
+  return {
+    message: text === message.text ? message : { ...message, text },
+  };
 };
 
 ElizaClient.prototype.sendConversationMessage = async function (

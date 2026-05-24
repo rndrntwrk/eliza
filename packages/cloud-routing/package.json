@@ -3,9 +3,9 @@
   "version": "2.0.0-beta.1",
   "description": "Cloud-default, local-override routing helper for Eliza Cloud-integrated plugins.",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
@@ -25,13 +25,18 @@
     "dist"
   ],
   "exports": {
-    ".": "./dist/index.js",
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
     "./package.json": "./package.json",
-    "./*.css": "./dist/*.css",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "scripts": {
@@ -57,5 +62,6 @@
   },
   "peerDependencies": {
     "zod": "^4.4.3"
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

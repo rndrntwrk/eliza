@@ -55,6 +55,7 @@ export const CompanionShell = memo(function CompanionShell(
     <div
       data-testid="companion-root"
       className="relative h-[100vh] w-full min-h-0 overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+      style={{ height: "100vh", minHeight: 0 }}
     >
       <CompanionView />
     </div>

@@ -3,16 +3,23 @@
   "version": "2.0.0-beta.1",
   "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "./src/index.ts",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "./src/index.ts",
   "sideEffects": false,
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -43,5 +50,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

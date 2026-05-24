@@ -23,6 +23,7 @@ import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
+import { LoginView, type LoginViewProps } from "../auth/LoginView";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
 import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
@@ -111,6 +112,53 @@ export function StartupShell() {
   coordinatorDispatchRef.current = startupCoordinator.dispatch;
   const coordinatorStateRef = useRef(startupCoordinator.state);
   coordinatorStateRef.current = startupCoordinator.state;
+
+  const [usePasswordLoginGate, setUsePasswordLoginGate] = useState(() =>
+    client.hasToken(),
+  );
+  const [startupLoginReason, setStartupLoginReason] =
+    useState<LoginViewProps["reason"]>();
+
+  useEffect(() => {
+    if (phase !== "pairing-required") {
+      setUsePasswordLoginGate(client.hasToken());
+      setStartupLoginReason(undefined);
+      return;
+    }
+
+    setUsePasswordLoginGate(client.hasToken());
+    let cancelled = false;
+    void client
+      .getAuthStatus()
+      .then((auth) => {
+        if (cancelled) return;
+        const shouldUsePasswordLogin =
+          client.hasToken() ||
+          auth.loginRequired === true ||
+          auth.passwordConfigured === false;
+        setUsePasswordLoginGate(shouldUsePasswordLogin);
+        setStartupLoginReason(
+          auth.required &&
+            auth.loginRequired &&
+            auth.passwordConfigured === false
+            ? "remote_password_not_configured"
+            : "remote_auth_required",
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUsePasswordLoginGate(client.hasToken());
+        setStartupLoginReason("remote_auth_required");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
+
+  const handleStartupLoginSuccess = useCallback(() => {
+    coordinatorDispatchRef.current({ type: "PAIRING_SUCCESS" });
+  }, []);
 
   useEffect(() => {
     const handleConnect = (event: Event): void => {
@@ -245,8 +293,16 @@ export function StartupShell() {
     return <StartupFailureView error={errorState} onRetry={retryStartup} />;
   }
 
-  // Pairing — delegate
+  // Auth-required startup — token holders need password login, tokenless clients still pair.
   if (phase === "pairing-required") {
+    if (usePasswordLoginGate) {
+      return (
+        <LoginView
+          onLoginSuccess={handleStartupLoginSuccess}
+          reason={startupLoginReason}
+        />
+      );
+    }
     return <PairingView />;
   }
 

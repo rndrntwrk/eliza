@@ -43,6 +43,12 @@ export type VrmViewerProps = {
   interactiveMode?: InteractionMode;
   /** Theme for the mathematical environment behind the avatar */
   environmentTheme?: "light" | "dark";
+  /** When true, keep Three.js scene background transparent for DOM backdrops. */
+  transparentEnvironmentBackground?: boolean;
+  /** Optional Gaussian splat world behind the avatar */
+  worldUrl?: string;
+  /** Per-avatar camera distance multiplier (default 1). Values > 1 zoom out. */
+  cameraDistanceScale?: number;
   /** User Settings: quality / balanced / efficiency for VRM power policy. */
   companionVrmPowerMode?: CompanionVrmPowerMode;
   /** When to apply ~half display FPS. */
@@ -163,6 +169,10 @@ export function VrmViewer(props: VrmViewerProps) {
     props.interactiveMode ?? "free",
   );
   const pointerParallaxRef = useRef<boolean>(props.pointerParallax ?? false);
+  const transparentEnvironmentBackgroundRef = useRef<boolean>(
+    props.transparentEnvironmentBackground ?? false,
+  );
+  const cameraDistanceScaleRef = useRef<number>(props.cameraDistanceScale ?? 1);
   const lastStateEmitMsRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const currentVrmPathRef = useRef<string>("");
@@ -200,6 +210,9 @@ export function VrmViewer(props: VrmViewerProps) {
   cameraProfileRef.current = props.cameraProfile ?? "chat";
   interactionModeRef.current = props.interactiveMode ?? "free";
   pointerParallaxRef.current = props.pointerParallax ?? false;
+  transparentEnvironmentBackgroundRef.current =
+    props.transparentEnvironmentBackground ?? false;
+  cameraDistanceScaleRef.current = props.cameraDistanceScale ?? 1;
   onEngineReadyRef.current = props.onEngineReady;
   onEngineStateRef.current = props.onEngineState;
   onRevealStartRef.current = props.onRevealStart;
@@ -344,6 +357,9 @@ export function VrmViewer(props: VrmViewerProps) {
     engine.setInteractionMode(interactionModeRef.current);
     engine.setInteractionEnabled(interactiveRef.current);
     engine.setPointerParallaxEnabled(pointerParallaxRef.current);
+    engine.setTransparentEnvironmentBackground(
+      transparentEnvironmentBackgroundRef.current,
+    );
 
     const resize = () => {
       const el = canvasRef.current;
@@ -468,6 +484,7 @@ export function VrmViewer(props: VrmViewerProps) {
         await engine.loadVrmFromUrl(
           vrmUrl,
           vrmUrl.split("/").pop() ?? "avatar.vrm",
+          cameraDistanceScaleRef.current,
         );
         if (!mountedRef.current || abortController.signal.aborted) return;
         const state = engine.getState();
@@ -499,6 +516,16 @@ export function VrmViewer(props: VrmViewerProps) {
     if (!props.environmentTheme) return;
     engineRef.current?.setEnvironmentTheme(props.environmentTheme);
   }, [props.environmentTheme]);
+
+  useEffect(() => {
+    void engineRef.current?.setWorldUrl(props.worldUrl ?? null);
+  }, [props.worldUrl]);
+
+  useEffect(() => {
+    engineRef.current?.setTransparentEnvironmentBackground(
+      props.transparentEnvironmentBackground ?? false,
+    );
+  }, [props.transparentEnvironmentBackground]);
 
   const updateParallaxFromPointer = (
     clientX: number,

@@ -38,6 +38,11 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
 ]);
+const STREAM555_PLUGIN_PACKAGE = "@rndrntwrk/plugin-555stream";
+
+type ConfigEnvRecord = Record<string, unknown> & {
+  vars?: Record<string, unknown>;
+};
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -96,6 +101,34 @@ function isTruthyCloudEnvValue(raw: string | undefined): boolean {
   if (!raw) return false;
   const value = raw.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
+}
+
+function readStringConfigEnvValue(
+  configEnv: ConfigEnvRecord | undefined,
+  key: string,
+): string | undefined {
+  const fromVars =
+    configEnv?.vars &&
+    typeof configEnv.vars === "object" &&
+    !Array.isArray(configEnv.vars)
+      ? configEnv.vars[key]
+      : undefined;
+  const value = fromVars ?? configEnv?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function hasStream555RuntimeEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  configEnv?: ConfigEnvRecord,
+): boolean {
+  const readValue = (key: string): string | undefined =>
+    env[key]?.trim() || readStringConfigEnvValue(configEnv, key);
+  const baseUrl = readValue("STREAM555_BASE_URL");
+  const auth =
+    readValue("STREAM555_AGENT_API_KEY") ||
+    readValue("STREAM555_AGENT_TOKEN") ||
+    readValue("STREAM_API_BEARER_TOKEN");
+  return Boolean(baseUrl && auth);
 }
 
 function isStoreBuildVariant(): boolean {
@@ -224,6 +257,8 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   streaming: "@elizaos/plugin-streaming",
+  "stream555-canonical": STREAM555_PLUGIN_PACKAGE,
+  "555stream": STREAM555_PLUGIN_PACKAGE,
   form: "@elizaos/plugin-form",
   // Steward wallet plugin — short ID used by auto-enable
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
@@ -312,9 +347,7 @@ export function collectPluginNames(
   const cloudHandlesInference =
     cloudTopology.services.inference ||
     (isCloudContainer && Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim()));
-  const _configEnv = config.env as
-    | (Record<string, unknown> & { vars?: Record<string, unknown> })
-    | undefined;
+  const configEnv = config.env as ConfigEnvRecord | undefined;
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
 
@@ -327,6 +360,10 @@ export function collectPluginNames(
         : pluginPackageName;
     return pluginEntries?.[pluginId]?.enabled === false;
   };
+
+  const isStream555ExplicitlyDisabled = (): boolean =>
+    isPluginExplicitlyDisabled(STREAM555_PLUGIN_PACKAGE) ||
+    pluginEntries?.["stream555-canonical"]?.enabled === false;
 
   const providerPluginIdSet = new Set(
     Object.values(PROVIDER_PLUGIN_MAP).map((pluginPackageName) => {
@@ -407,6 +444,14 @@ export function collectPluginNames(
       pluginsToLoad.add(pluginName);
       track(pluginName, `plugins.allow[${JSON.stringify(item)}]`);
     }
+  }
+
+  if (
+    hasStream555RuntimeEnv(process.env, configEnv) &&
+    !isStream555ExplicitlyDisabled()
+  ) {
+    pluginsToLoad.add(STREAM555_PLUGIN_PACKAGE);
+    track(STREAM555_PLUGIN_PACKAGE, "env: STREAM555_BASE_URL + stream auth");
   }
 
   // Connector plugins — load when connector has config entries

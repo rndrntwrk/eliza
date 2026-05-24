@@ -3,9 +3,9 @@
   "version": "2.0.0-beta.1",
   "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "./src/index.ts",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "./src/index.ts",
   "sideEffects": false,
   "license": "MIT",
   "repository": {
@@ -14,17 +14,18 @@
     "directory": "plugins/plugin-x402"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./*.css": "./dist/*.css",
+    "./package.json": "./package.json",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -73,5 +74,6 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

@@ -2,7 +2,7 @@
   "name": "@elizaos/cloud-ui",
   "version": "2.0.0-beta.1",
   "description": "Shared React UI for Eliza Cloud. Browser bundles do not depend on @elizaos/core (use local types under src/types for protocol constants).",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -67,10 +67,24 @@
     "build-storybook": "storybook build"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
+    }
   },
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "files": [
     "dist"
-  ]
+  ],
+  "_aliceSourceMainSentinel": "v1",
+  "type": "module"
 }

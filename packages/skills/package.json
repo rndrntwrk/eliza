@@ -3,19 +3,21 @@
   "version": "2.0.0-beta.1",
   "description": "Bundled skills and skill loading utilities for elizaOS agents",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
     "./package.json": "./package.json",
-    "./*.css": "./dist/*.css",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "scripts": {
@@ -61,5 +63,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598"
+  "gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598",
+  "_aliceSourceMainSentinel": "v1"
 }

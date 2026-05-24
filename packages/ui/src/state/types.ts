@@ -37,6 +37,7 @@ import type {
   McpServerStatus,
   MintResult,
   OnboardingOptions,
+  OperatorActionMessagePayload,
   PluginInfo,
   RegistryPlugin,
   RegistryStatus,
@@ -781,6 +782,10 @@ export interface AppActions {
   suggestConversationTitle: (id: string) => Promise<string | null>;
   /** Send a programmatic message (e.g. from a UiSpec action) without touching chatInput. */
   sendActionMessage: (text: string) => Promise<void>;
+  /** Persist an operator action pill into the active conversation. */
+  logConversationOperatorAction: (
+    payload: OperatorActionMessagePayload,
+  ) => Promise<boolean>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,

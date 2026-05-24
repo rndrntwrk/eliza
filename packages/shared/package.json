@@ -3,7 +3,7 @@
   "version": "2.0.0-beta.1",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
@@ -39,40 +39,47 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     },
     "./config/allowed-hosts": {
-      "import": "./dist/config/allowed-hosts.js",
-      "default": "./dist/config/allowed-hosts.js",
-      "types": "./dist/config/allowed-hosts.d.ts"
+      "types": "./src/config/allowed-hosts.ts",
+      "bun": "./src/config/allowed-hosts.ts",
+      "import": "./src/config/allowed-hosts.ts",
+      "default": "./src/config/allowed-hosts.ts"
     },
     "./dev-settings-banner-style": {
-      "import": "./dist/dev-settings-banner-style.js",
-      "default": "./dist/dev-settings-banner-style.js",
-      "types": "./dist/dev-settings-banner-style.d.ts"
+      "types": "./src/dev-settings-banner-style.ts",
+      "bun": "./src/dev-settings-banner-style.ts",
+      "import": "./src/dev-settings-banner-style.ts",
+      "default": "./src/dev-settings-banner-style.ts"
     },
     "./dev-settings-figlet-heading": {
-      "import": "./dist/dev-settings-figlet-heading.js",
-      "default": "./dist/dev-settings-figlet-heading.js",
-      "types": "./dist/dev-settings-figlet-heading.d.ts"
+      "types": "./src/dev-settings-figlet-heading.ts",
+      "bun": "./src/dev-settings-figlet-heading.ts",
+      "import": "./src/dev-settings-figlet-heading.ts",
+      "default": "./src/dev-settings-figlet-heading.ts"
     },
     "./dev-settings-table": {
-      "import": "./dist/dev-settings-table.js",
-      "default": "./dist/dev-settings-table.js",
-      "types": "./dist/dev-settings-table.d.ts"
+      "types": "./src/dev-settings-table.ts",
+      "bun": "./src/dev-settings-table.ts",
+      "import": "./src/dev-settings-table.ts",
+      "default": "./src/dev-settings-table.ts"
     },
     "./runtime-env": {
-      "import": "./dist/runtime-env.js",
-      "default": "./dist/runtime-env.js",
-      "types": "./dist/runtime-env.d.ts"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/runtime-env.ts",
+      "bun": "./src/runtime-env.ts",
+      "import": "./src/runtime-env.ts",
+      "default": "./src/runtime-env.ts"
     }
   },
   "publishConfig": {
@@ -93,5 +100,6 @@
     "bun-types": "^1.3.12",
     "typescript": "^6.0.3"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./src/index.ts",
+  "_aliceSourceMainSentinel": "v1"
 }

@@ -2,19 +2,21 @@
   "name": "@elizaos/plugin-imessage",
   "version": "2.0.0-beta.1",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./*.css": "./dist/*.css",
+    "./package.json": "./package.json",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -106,5 +108,6 @@
         "sensitive": false
       }
     }
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

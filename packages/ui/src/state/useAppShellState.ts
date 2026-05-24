@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuthStatus } from "../hooks/useAuthStatus";
 import {
   fetchServerFavoriteApps,
   loadFavoriteApps,
@@ -53,6 +54,8 @@ export function useAppShellState() {
   const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
   const [configText, setConfigText] = useState("");
 
+  const { state: authState } = useAuthStatus({ observeOnly: true });
+
   const setAppsSubTab = useCallback((value: "browse" | "running" | "games") => {
     setAppsSubTabRaw(value);
     try {
@@ -69,6 +72,8 @@ export function useAppShellState() {
   }, []);
 
   useEffect(() => {
+    if (authState.phase !== "authenticated") return;
+
     let cancelled = false;
     void fetchServerFavoriteApps().then((serverApps) => {
       if (cancelled || serverApps == null) return;
@@ -85,7 +90,7 @@ export function useAppShellState() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authState.phase]);
 
   const setRecentApps = useCallback((apps: string[]) => {
     setRecentAppsRaw(apps);

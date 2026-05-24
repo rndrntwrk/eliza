@@ -3,19 +3,20 @@
   "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./*.css": "./dist/*.css",
+    "./package.json": "./package.json",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "scripts": {
@@ -50,9 +51,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "files": [
     "dist",
     "auto-enable.ts"
-  ]
+  ],
+  "_aliceSourceMainSentinel": "v1"
 }

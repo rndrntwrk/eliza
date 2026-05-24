@@ -13,6 +13,12 @@ export { SHARED_STYLE_RULES };
 
 const DEFAULT_LANGUAGE: CharacterLanguage = "en";
 
+export const DEFAULT_VISUAL_STYLE_PRESET_ID = "alice";
+export const DEFAULT_VISUAL_STYLE_PRESET_NAME = "Alice";
+export const DEFAULT_VISUAL_AVATAR_INDEX = 9;
+export const DEFAULT_ALICE_SPEECH_MOTION_PATH =
+  "/animations/emotes/talk.glb.gz";
+
 const LANGUAGE_REPLY_RULES: Record<CharacterLanguage, string> = {
   en: "Default to natural English unless the user clearly switches languages.",
   "zh-CN":
@@ -145,7 +151,9 @@ export const STYLE_PRESETS: StylePreset[] =
 export function getDefaultStylePreset(
   language: unknown = DEFAULT_LANGUAGE,
 ): StylePreset {
-  const preset = getStylePresets(language)[0];
+  const preset =
+    resolveStylePresetById(DEFAULT_VISUAL_STYLE_PRESET_ID, language) ??
+    getStylePresets(language)[0];
   if (!preset) {
     throw new Error("No style presets are configured.");
   }
@@ -252,7 +260,7 @@ export function buildElizaCharacterCatalog(): {
     .sort((left, right) => left.avatarIndex - right.avatarIndex)
     .map((preset) => ({
       id: preset.avatarIndex,
-      slug: `eliza-${preset.avatarIndex}`,
+      slug: `milady-${preset.avatarIndex}`,
       title: preset.name,
       sourceName: preset.name,
     }));

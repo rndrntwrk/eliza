@@ -32,16 +32,23 @@ const AVATAR_CHANGE_WAVE_EMOTE: AppEmoteEventDetail = {
   showOverlay: false,
 };
 
+function toCssImageUrl(url: string): string {
+  return `url("${url.replace(/"/g, '\\"')}")`;
+}
+
 /**
  * VrmStage — single persistent VRM engine that swaps only the character model
  * when `vrmPath` changes. The mathematical environment stays
- * continuously rendered, completely decoupled from character selection.
+ * decoupled from character selection; image backdrops can replace its scene
+ * background without changing the avatar/camera pipeline.
  */
 export const VrmStage = memo(function VrmStage({
   active = true,
   vrmPath,
   environmentTheme,
   fallbackPreviewUrl,
+  backgroundImageUrl,
+  worldUrl,
   cameraProfile = "companion",
   initialCompanionZoomNormalized,
   onEngineReady,
@@ -51,6 +58,7 @@ export const VrmStage = memo(function VrmStage({
   companionVrmPowerMode = "balanced",
   companionHalfFramerateMode = "when_saving_power",
   companionAnimateWhenHidden = false,
+  cameraDistanceScale,
   viewerComponent: ViewerComponent = VrmViewer,
   t,
 }: {
@@ -58,6 +66,8 @@ export const VrmStage = memo(function VrmStage({
   vrmPath: string;
   environmentTheme?: "light" | "dark";
   fallbackPreviewUrl: string;
+  backgroundImageUrl?: string | null;
+  worldUrl?: string | null;
   cameraProfile?: CameraProfile;
   initialCompanionZoomNormalized?: number;
   onEngineReady?: (engine: VrmEngine) => void;
@@ -67,6 +77,7 @@ export const VrmStage = memo(function VrmStage({
   companionVrmPowerMode?: CompanionVrmPowerMode;
   companionHalfFramerateMode?: CompanionHalfFramerateMode;
   companionAnimateWhenHidden?: boolean;
+  cameraDistanceScale?: number;
   viewerComponent?: (props: VrmViewerProps) => ReactElement;
   t: TranslateFn;
 }) {
@@ -244,31 +255,60 @@ export const VrmStage = memo(function VrmStage({
     <div
       data-testid="companion-vrm-stage"
       data-theme={environmentTheme}
-      className={`fixed inset-0 z-0 overflow-hidden ${environmentTheme === "dark" ? "bg-[#08060e]" : "bg-[#f5f5f5]"}`}
+      data-background-image-url={backgroundImageUrl ?? undefined}
+      data-world-url={worldUrl ?? undefined}
+      className={`fixed inset-0 z-0 overflow-hidden ${
+        backgroundImageUrl
+          ? "bg-transparent"
+          : environmentTheme === "dark"
+            ? "bg-[#08060e]"
+            : "bg-[#f5f5f5]"
+      }`}
     >
+      {backgroundImageUrl && (
+        <div
+          className="pointer-events-none absolute inset-0 scale-[1.04]"
+          style={{
+            backgroundImage: toCssImageUrl(backgroundImageUrl),
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            filter:
+              environmentTheme === "dark"
+                ? "blur(18px) brightness(0.58) saturate(1.08)"
+                : "blur(18px) brightness(0.92) saturate(0.98)",
+          }}
+        />
+      )}
+
       {/* Static CSS fallback — themed construct with faint receding grid */}
       <div className="pointer-events-none absolute inset-0">
         <div
           className="absolute inset-0"
           style={{
-            background:
-              environmentTheme === "dark"
+            background: backgroundImageUrl
+              ? environmentTheme === "dark"
+                ? "radial-gradient(circle at 50% 40%, rgba(80, 20, 140, 0.18) 0%, transparent 60%), linear-gradient(180deg, rgba(8, 6, 14, 0.18) 0%, rgba(12, 10, 20, 0.36) 100%)"
+                : "radial-gradient(circle at 50% 40%, rgba(180, 200, 220, 0.1) 0%, transparent 60%), linear-gradient(180deg, rgba(245, 245, 245, 0.08) 0%, rgba(239, 239, 239, 0.18) 100%)"
+              : environmentTheme === "dark"
                 ? "radial-gradient(circle at 50% 40%, rgba(80, 20, 140, 0.18) 0%, transparent 60%), linear-gradient(180deg, #08060e 0%, #0c0a14 100%)"
                 : "radial-gradient(circle at 50% 40%, rgba(180, 200, 220, 0.12) 0%, transparent 60%), linear-gradient(180deg, #f5f5f5 0%, #efefef 100%)",
           }}
         />
-        <div
-          className={`absolute inset-x-[-14%] bottom-[-24%] h-[74%] ${environmentTheme === "dark" ? "opacity-50" : "opacity-30"}`}
-          style={{
-            transform: "perspective(1200px) rotateX(80deg)",
-            transformOrigin: "center bottom",
-            backgroundImage:
-              environmentTheme === "dark"
-                ? "linear-gradient(rgba(80, 20, 160, 0.45) 1px, transparent 1px), linear-gradient(90deg, rgba(80, 20, 160, 0.4) 1px, transparent 1px)"
-                : "linear-gradient(rgba(160, 170, 180, 0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(160, 170, 180, 0.22) 1px, transparent 1px)",
-            backgroundSize: "68px 68px",
-          }}
-        />
+        {!backgroundImageUrl && (
+          <div
+            className={`absolute inset-x-[-14%] bottom-[-24%] h-[74%] ${environmentTheme === "dark" ? "opacity-50" : "opacity-30"}`}
+            style={{
+              transform: "perspective(1200px) rotateX(80deg)",
+              transformOrigin: "center bottom",
+              backgroundImage:
+                environmentTheme === "dark"
+                  ? "linear-gradient(rgba(80, 20, 160, 0.45) 1px, transparent 1px), linear-gradient(90deg, rgba(80, 20, 160, 0.4) 1px, transparent 1px)"
+                  : "linear-gradient(rgba(160, 170, 180, 0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(160, 170, 180, 0.22) 1px, transparent 1px)",
+              backgroundSize: "68px 68px",
+            }}
+          />
+        )}
       </div>
 
       {/* Single persistent VrmViewer — world stays loaded, only character swaps */}
@@ -276,8 +316,11 @@ export const VrmStage = memo(function VrmStage({
         <ViewerComponent
           active={active}
           vrmPath={vrmPath}
+          worldUrl={worldUrl ?? undefined}
           environmentTheme={environmentTheme}
           cameraProfile={cameraProfile}
+          cameraDistanceScale={cameraDistanceScale}
+          transparentEnvironmentBackground={Boolean(backgroundImageUrl)}
           companionVrmPowerMode={companionVrmPowerMode}
           companionHalfFramerateMode={companionHalfFramerateMode}
           companionAnimateWhenHidden={companionAnimateWhenHidden}

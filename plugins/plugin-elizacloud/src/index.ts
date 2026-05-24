@@ -345,3 +345,19 @@ export { validateCloudBaseUrl } from "./cloud/validate-url";
 export * from "./plugin";
 export * from "./register-routes";
 export * from "./cloud";
+
+// [milaidy:elizacloud-agent-export-compat]
+// eliza/packages/agent/src statically imports getOrCreateClientAddressKey,
+// persistCloudWalletCache, and provisionCloudWalletsBestEffort from
+// @elizaos/plugin-elizacloud. The other symbols the agent references
+// (resolveCloudApiKey, ensureCloudTtsApiKeyAlias, etc.) ARE already
+// re-exported by the plugin's src/index.ts; only the three cloud-wallet
+// helpers below are missing. Adding them here as named re-exports
+// (rather than wildcard `export * from "./cloud/cloud-wallet"` because
+// cloud-wallet also exports identifiers that collide with names already
+// declared at the top level of src/index.ts).
+export {
+  getOrCreateClientAddressKey,
+  persistCloudWalletCache,
+  provisionCloudWalletsBestEffort,
+} from "./cloud/cloud-wallet";

@@ -3,9 +3,9 @@
   "version": "2.0.0-beta.1",
   "description": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./src/index.ts",
   "module": "src/index.ts",
-  "types": "src/index.ts",
+  "types": "./src/index.ts",
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -13,13 +13,18 @@
     "directory": "plugins/plugin-aosp-local-inference"
   },
   "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./*.css": "./dist/*.css",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -58,5 +63,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

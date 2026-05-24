@@ -60,8 +60,29 @@ export interface UiSpecBlock {
   raw?: string;
 }
 
+export type OperatorActionKind = "stream" | "avatar" | "launch";
+
+/** A user-visible Alice operator action pill rendered in chat. */
+export interface ActionPillBlock {
+  type: "action-pill";
+  label: string;
+  kind: OperatorActionKind;
+  detail?: string;
+}
+
 /** Union of all content block types. */
-export type ContentBlock = TextBlock | ConfigFormBlock | UiSpecBlock;
+export type ContentBlock =
+  | TextBlock
+  | ConfigFormBlock
+  | UiSpecBlock
+  | ActionPillBlock;
+
+export interface OperatorActionMessagePayload {
+  label: string;
+  kind: OperatorActionKind;
+  detail?: string;
+  fallbackText?: string;
+}
 
 /** An image attachment to send with a chat message. */
 export interface ImageAttachment {

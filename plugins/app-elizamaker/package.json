@@ -3,24 +3,26 @@
   "version": "2.0.0-beta.1",
   "type": "module",
   "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     },
     "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/plugin.ts",
+      "bun": "./src/plugin.ts",
+      "import": "./src/plugin.ts",
+      "default": "./src/plugin.ts"
     }
   },
   "dependencies": {
@@ -40,7 +42,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
@@ -52,5 +54,6 @@
   ],
   "devDependencies": {
     "tsup": "^8.5.1"
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

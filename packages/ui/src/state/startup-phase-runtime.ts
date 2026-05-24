@@ -165,15 +165,11 @@ export async function runStartingRuntime(
         return;
       }
       if ((ae?.status === 401 || ae?.status === 429) && client.hasToken()) {
-        // 401/429 with a token. Two flavors to distinguish:
-        //   1. Genuine port race / pre-bearer endpoint window — /api/auth/status
-        //      itself isn't reachable yet. Keep retrying.
-        //   2. Bearer-only token (paired but no password session). Server says
-        //      /api/auth/status is fine (authenticated:true) but app endpoints
-        //      like /api/agent/status still 401, or 429 from the auth rate
-        //      limiter on those endpoints. /api/auth/me returns
-        //      reason="remote_auth_required". Advance to ready so the auth gate
-        //      can render LoginView. Hydrating tolerates 401s.
+        // Remote password/session auth stays behind the startup auth gate.
+        // /api/auth/status is intentionally public and may report a valid bearer
+        // token while protected app endpoints still require the browser password
+        // session. Do not advance into hydrating/ready here: that mounts the full
+        // shell and fans out protected calls before LoginView can run.
         try {
           const auth = await client.getAuthStatus();
           const remotePasswordMissing =
@@ -181,8 +177,11 @@ export async function runStartingRuntime(
             auth.loginRequired &&
             auth.passwordConfigured === false;
           if (auth.authenticated || remotePasswordMissing) {
+            deps.setAuthRequired(true);
+            deps.setPairingEnabled(auth.pairingEnabled);
+            deps.setPairingExpiresAt(auth.expiresAt);
             deps.setOnboardingLoading(false);
-            dispatch({ type: "AGENT_RUNNING" });
+            dispatch({ type: "BACKEND_AUTH_REQUIRED" });
             return;
           }
         } catch {

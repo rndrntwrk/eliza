@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-elizacloud",
   "version": "2.0.0-beta.1",
   "type": "module",
-  "main": "dist/node/index.node.js",
+  "main": "./src/index.ts",
   "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "types": "./src/index.ts",
   "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
@@ -12,26 +12,18 @@
     "url": "git+https://github.com/elizaos-plugins/plugin-elizacloud.git"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./*.css": "./dist/*.css",
+    "./package.json": "./package.json",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -309,5 +301,6 @@
       "browser": "Browser-compatible build available via exports.browser",
       "node": "Node.js build available via exports.node"
     }
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

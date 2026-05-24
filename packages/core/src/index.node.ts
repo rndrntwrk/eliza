@@ -40,6 +40,8 @@ export {
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
+	resolveSecretKeyAlias,
+	SECRET_KEY_ALIASES,
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 export {

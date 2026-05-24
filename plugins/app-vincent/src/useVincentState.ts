@@ -1,4 +1,4 @@
-import { openExternalUrl } from "@elizaos/ui";
+import { openExternalUrl, useAuthStatus } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { vincentClient } from "./client";
 
@@ -23,7 +23,12 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
   const busyRef = useRef(false);
   const loginPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const { state: authState } = useAuthStatus({ observeOnly: true });
+  const authReady = authState.phase === "authenticated";
+
   const pollVincentStatus = useCallback(async () => {
+    if (!authReady) return false;
+
     try {
       const status = await vincentClient.vincentStatus();
       setVincentConnected(status.connected);
@@ -32,20 +37,20 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
     } catch {
       return false;
     }
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
-    void pollVincentStatus();
+    if (authReady) void pollVincentStatus();
     return () => {
       if (loginPollRef.current) {
         clearInterval(loginPollRef.current);
         loginPollRef.current = null;
       }
     };
-  }, [pollVincentStatus]);
+  }, [authReady, pollVincentStatus]);
 
   const handleVincentLogin = useCallback(async () => {
-    if (vincentConnected || busyRef.current || vincentLoginBusy) return;
+    if (!authReady || vincentConnected || busyRef.current || vincentLoginBusy) return;
     busyRef.current = true;
     setVincentLoginBusy(true);
     setVincentLoginError(null);
@@ -93,6 +98,7 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
       busyRef.current = false;
     }
   }, [
+    authReady,
     pollVincentStatus,
     setActionNotice,
     t,

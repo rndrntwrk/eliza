@@ -114,6 +114,68 @@ function isAutonomyService(value: unknown): value is AutonomyServiceLike {
 /** Guards against registering signal handlers more than once. */
 let signalHandlersRegistered = false;
 
+type StartupLogFields = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+function formatStartupLogFields(fields: StartupLogFields = {}): string {
+  const parts = Object.entries(fields)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => {
+      if (typeof value === "string") {
+        return `${key}=${JSON.stringify(value)}`;
+      }
+      return `${key}=${String(value)}`;
+    });
+
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
+function startupInfo(event: string, fields: StartupLogFields = {}): void {
+  logger.info(`[milady][startup] ${event}${formatStartupLogFields(fields)}`);
+}
+
+function startupError(event: string, fields: StartupLogFields = {}): void {
+  logger.error(`[milady][startup] ${event}${formatStartupLogFields(fields)}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function withStartupPhase<T>(
+  phase: string,
+  fields: StartupLogFields,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  startupInfo(`${phase}:start`, fields);
+
+  try {
+    const result = await fn();
+    startupInfo(`${phase}:done`, {
+      ...fields,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    startupError(`${phase}:error`, {
+      ...fields,
+      elapsedMs: Date.now() - startedAt,
+      error: errorMessage(error),
+    });
+    throw error;
+  }
+}
+
+function runtimeStartupFields(runtime: AgentRuntime): StartupLogFields {
+  return {
+    agentId: runtime.agentId,
+    agentName: runtime.character?.name ?? null,
+  };
+}
+
 interface EntityLike {
   id: string;
   agentId?: string;
@@ -1069,6 +1131,10 @@ export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
   syncAppEnvToEliza();
+  const startupStartedAt = Date.now();
+  const serverOnly = Boolean(options?.serverOnly);
+  startupInfo("start-eliza:start", { serverOnly });
+
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
   const orchRaw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
@@ -1085,47 +1151,59 @@ export async function startEliza(
     }
 
     if (options?.serverOnly) {
-      let currentRuntime =
-        (await upstreamStartElizaWithPgliteCompat({
-          ...options,
-          headless: true,
-          serverOnly: false,
-        })) ?? undefined;
-
-      currentRuntime = currentRuntime
-        ? await repairRuntimeAfterBoot(currentRuntime)
-        : currentRuntime;
-
-      if (!currentRuntime) {
-        return currentRuntime;
-      }
-
+      let currentRuntime:
+        | Awaited<ReturnType<typeof upstreamStartElizaWithPgliteCompat>>
+        | undefined;
       const { startApiServer } = await import("../api/server");
       const apiPort = resolveServerOnlyPort(process.env);
-      const { port: actualApiPort } = await startApiServer({
-        port: apiPort,
-        runtime: currentRuntime,
-        onRestart: async () => {
-          if (!currentRuntime) {
-            return null;
-          }
+      const apiServerHandle = await withStartupPhase(
+        "api-bind",
+        { port: apiPort, initialAgentState: "starting" },
+        () =>
+          startApiServer({
+            port: apiPort,
+            initialAgentState: "starting",
+            onRestart: async () => {
+              if (!currentRuntime) {
+                return null;
+              }
 
-          await upstreamShutdownRuntime(currentRuntime, "server-only restart");
+              const runtimeToStop = currentRuntime;
+              await withStartupPhase(
+                "runtime-restart-shutdown",
+                runtimeStartupFields(runtimeToStop),
+                () =>
+                  upstreamShutdownRuntime(
+                    runtimeToStop,
+                    "server-only restart",
+                  ),
+              );
 
-          const restarted =
-            (await upstreamStartElizaWithPgliteCompat({
-              ...options,
-              headless: true,
-              serverOnly: false,
-            })) ?? undefined;
+              const restarted =
+                (await withStartupPhase(
+                  "runtime-restart-boot",
+                  { serverOnly: true, includesPgliteStartup: true },
+                  () =>
+                    upstreamStartElizaWithPgliteCompat({
+                      ...options,
+                      headless: true,
+                      serverOnly: false,
+                    }),
+                )) ?? undefined;
 
-          currentRuntime = restarted
-            ? await repairRuntimeAfterBoot(restarted)
-            : undefined;
+              currentRuntime = restarted
+                ? await withStartupPhase(
+                    "runtime-restart-repair",
+                    runtimeStartupFields(restarted),
+                    () => repairRuntimeAfterBoot(restarted),
+                  )
+                : undefined;
 
-          return currentRuntime ?? null;
-        },
-      });
+              return currentRuntime ?? null;
+            },
+          }),
+      );
+      const actualApiPort = apiServerHandle.port;
 
       // WHY: `startApiServer` may bind a different port than requested (busy
       // socket, upstream policy). Shells, scripts, and follow-up code reading
@@ -1143,10 +1221,60 @@ export async function startEliza(
       } catch {}
 
       logger.info(
-        `[eliza] API server listening on http://localhost:${actualApiPort}`,
+        `[milady] API server listening on http://localhost:${actualApiPort}`,
       );
-      console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
-      console.log("[eliza] Server running. Press Ctrl+C to stop.");
+
+      try {
+        currentRuntime =
+          (await withStartupPhase(
+            "runtime-boot",
+            { serverOnly: true, includesPgliteStartup: true },
+            () =>
+              upstreamStartElizaWithPgliteCompat({
+                ...options,
+                headless: true,
+                serverOnly: false,
+              }),
+          )) ?? undefined;
+
+        currentRuntime = currentRuntime
+          ? await withStartupPhase(
+              "runtime-repair",
+              runtimeStartupFields(currentRuntime),
+              () => repairRuntimeAfterBoot(currentRuntime),
+            )
+          : currentRuntime;
+
+        if (!currentRuntime) {
+          await apiServerHandle.close();
+          return currentRuntime;
+        }
+
+        apiServerHandle.updateRuntime(currentRuntime);
+      } catch (error) {
+        apiServerHandle.updateStartup({
+          state: "error",
+          phase: "runtime-boot",
+          attempt: 1,
+          lastError: errorMessage(error),
+          lastErrorAt: Date.now(),
+        });
+        await apiServerHandle.close().catch(() => undefined);
+        throw error;
+      }
+
+      startupInfo("start-eliza:done", {
+        serverOnly: true,
+        port: actualApiPort,
+        elapsedMs: Date.now() - startupStartedAt,
+      });
+      apiServerHandle.updateStartup({
+        state: "running",
+        phase: "running",
+        attempt: 0,
+      });
+      console.log(`[milady] Control UI: http://localhost:${actualApiPort}`);
+      console.log("[milady] Server running. Press Ctrl+C to stop.");
 
       const keepAlive = setInterval(() => {}, 1 << 30);
       let isCleaningUp = false;
@@ -1176,6 +1304,18 @@ export async function startEliza(
           }
           _triggerEventBridge = null;
         }
+        // Stop the n8n sidecar if it was started during this session. The
+        // singleton is lazily constructed, so this is a no-op when n8n was
+        // never used.
+        try {
+          const { disposeN8nSidecar } = await import(
+            "@miladyai/app-core/services/n8n-sidecar"
+          );
+          await disposeN8nSidecar();
+        } catch {
+          /* non-critical — best effort */
+        }
+        await apiServerHandle.close().catch(() => undefined);
         process.exit(0);
       };
 
@@ -1187,8 +1327,23 @@ export async function startEliza(
       return currentRuntime;
     }
 
-    const runtime = await upstreamStartElizaWithPgliteCompat(options);
-    return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+    const runtime = await withStartupPhase(
+      "upstream-start-eliza",
+      { serverOnly: false, includesPgliteStartup: true },
+      () => upstreamStartElizaWithPgliteCompat(options),
+    );
+    const repaired = runtime
+      ? await withStartupPhase(
+          "runtime-repair",
+          runtimeStartupFields(runtime),
+          () => repairRuntimeAfterBoot(runtime),
+        )
+      : runtime;
+    startupInfo("start-eliza:done", {
+      serverOnly: false,
+      elapsedMs: Date.now() - startupStartedAt,
+    });
+    return repaired;
   } finally {
     syncElizaEnvAliases();
   }

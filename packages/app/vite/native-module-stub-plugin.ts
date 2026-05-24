@@ -133,6 +133,7 @@ export function nativeModuleStubPlugin(
   const nativePackages = new Set([
     "node-llama-cpp",
     "fs-extra",
+    "mammoth", // [milaidy:vite-stub-mammoth]
     "pty-state-capture",
     "pty-console",
     "electron",
@@ -265,7 +266,7 @@ export function nativeModuleStubPlugin(
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
 
       const strippedId = id.slice(VIRTUAL_PREFIX.length);
-      const modName = strippedId.split("/")[0];
+      const modName = strippedId.split(/[/?\0]/)[0];
       // node-llama-cpp is the most import-heavy native module — its consumers
       // use many named exports (LlamaLogLevel, getLlama, etc.).  Return a
       // module whose default export is a Proxy that returns no-op stubs for
@@ -287,6 +288,17 @@ export function nativeModuleStubPlugin(
           "export const LlamaChatSession = stub;",
           "export const LlamaGrammar = stub;",
           "export const LlamaJsonSchemaGrammar = stub;",
+        ].join("\n");
+      }
+
+      // [milaidy:vite-stub-mammoth-loader]
+      if (modName === "mammoth") {
+        return [
+          "const emptyResult = Object.freeze({ value: '', messages: [] });",
+          "export async function extractRawText() { return emptyResult; }",
+          "const mammoth = Object.freeze({ extractRawText });",
+          "export { mammoth };",
+          "export default mammoth;",
         ].join("\n");
       }
 

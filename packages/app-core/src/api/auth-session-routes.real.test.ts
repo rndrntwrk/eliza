@@ -489,6 +489,28 @@ describe("P1 session routes (real pglite)", () => {
     expect(requiredLocalAuth.status()).toBe(401);
   });
 
+  it("route auth accepts the configured bearer token when session storage is available", async () => {
+    process.env.ELIZA_API_TOKEN = "configured-token-value";
+    const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
+      await import("./auth");
+    reset();
+
+    const bearer = fakeRes();
+    const bearerOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/workbench/overview",
+        bearer: "configured-token-value",
+        ip: "10.0.0.8",
+        headers: { host: "10.0.0.2:31337" },
+      }),
+      bearer.res,
+      { store: harness.store },
+    );
+    expect(bearerOk).toBe(true);
+    expect(bearer.status()).toBe(200);
+  });
+
   it("route auth rejects localhost trust when proxy headers report remote clients", async () => {
     process.env.ELIZA_API_TOKEN = "configured-token-value";
     const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =

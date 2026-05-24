@@ -17,7 +17,7 @@
     "white-label",
     "agent-framework"
   ],
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "files": [
     "dist"
   ],
@@ -45,21 +45,30 @@
     "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     },
     "./platform/native-plugin-entrypoints": {
-      "import": "./dist/platform/native-plugin-entrypoints.js",
-      "default": "./dist/platform/native-plugin-entrypoints.js",
-      "types": "./dist/platform/native-plugin-entrypoints.d.ts"
+      "types": "./src/platform/native-plugin-entrypoints.ts",
+      "bun": "./src/platform/native-plugin-entrypoints.ts",
+      "import": "./src/platform/native-plugin-entrypoints.ts",
+      "default": "./src/platform/native-plugin-entrypoints.ts"
     },
     "./platform/empty-node-module": {
-      "import": "./dist/platform/empty-node-module.js",
-      "default": "./dist/platform/empty-node-module.js",
-      "types": "./dist/platform/empty-node-module.d.ts"
+      "types": "./src/platform/empty-node-module.ts",
+      "bun": "./src/platform/empty-node-module.ts",
+      "import": "./src/platform/empty-node-module.ts",
+      "default": "./src/platform/empty-node-module.ts"
     }
   },
   "peerDependencies": {
@@ -174,5 +183,6 @@
     "vitest": "^4.0.18"
   },
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./src/index.ts",
+  "_aliceSourceMainSentinel": "v1"
 }

@@ -3,26 +3,27 @@
   "version": "2.0.0-beta.1",
   "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "./src/index.ts",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "./src/index.ts",
   "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./*.css": "./dist/*.css",
+    "./package.json": "./package.json",
     "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
     }
   },
   "files": [
@@ -131,5 +132,6 @@
     "platformDetails": {
       "node": "Default export (Node.js)"
     }
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

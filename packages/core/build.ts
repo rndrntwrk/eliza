@@ -619,6 +619,15 @@ const TS_SRC = "src";
 
 // Browser-specific externals (these should be provided by the host environment)
 const browserExternals = [
+	// [milaidy:browser-externals] Mark fs-extra and graceful-fs as external so
+	// they are NOT inlined into dist/browser/index.browser.js. graceful-fs's
+	// gracefulify() reads fs.realpath.native at module init; in a browser where
+	// fs is stubbed empty that lookup throws TypeError and kills SPA boot.
+	// Leaving these as bare imports lets the SPA's Vite stub plugin (apps/app/
+	// vite/native-module-stub-plugin.ts) replace them with a Proxy noop stub.
+	"fs-extra", // [milaidy:browser-externals]
+	"graceful-fs", // [milaidy:browser-externals]
+	"mammoth", // [milaidy:browser-externals-mammoth]
 	// These will be loaded via CDN or bundled by the consuming app
 	"sharp", // Image processing - not available in browser
 	"@hapi/shot", // Test utility - not needed in browser

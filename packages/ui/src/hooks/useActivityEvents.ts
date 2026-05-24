@@ -61,6 +61,11 @@ function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
   }
 }
 
+function isOperatorActionMessage(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return value.source === "operator_action";
+}
+
 /**
  * Subscribe to task/proactive websocket events plus assistant activity events,
  * returning a capped list of recent activity entries.
@@ -140,6 +145,12 @@ export function useActivityEvents() {
     const unbindProactive = client.onWsEvent(
       "proactive-message",
       (data: Record<string, unknown>) => {
+        if (
+          data.source === "operator_action" ||
+          isOperatorActionMessage(data.message)
+        ) {
+          return;
+        }
         const message =
           typeof data.message === "string"
             ? data.message.slice(0, 120)

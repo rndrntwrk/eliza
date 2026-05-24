@@ -38,6 +38,8 @@ import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
+import { handleAliceDashboardFallbackRoutes } from "./dashboard-fallback-routes";
+import { authorizeAgentStatusFallback } from "./agent-status-auth-bridge";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -47,8 +49,10 @@ import {
   type CompatRuntimeState,
   clearCompatRuntimeRestart,
   getConfiguredCompatAgentName,
+  readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
+import { buildKubeHealthResponse } from "./kube-health";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
@@ -581,6 +585,125 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
 // cloud route handlers into plugin-elizacloud (see plugins/plugin-elizacloud/
 // plugin.ts → compatLoopbackConfigPut + makeCloudRouteHandler).
 
+interface AliceCompanionStageState {
+  camera: {
+    zoom: number;
+    yaw: number;
+    pitch: number;
+    pan: number;
+  };
+}
+
+const ALICE_COMPANION_STAGE_DEFAULT: AliceCompanionStageState = {
+  camera: {
+    zoom: 0.25,
+    yaw: 0,
+    pitch: 0,
+    pan: 0,
+  },
+};
+
+function aliceClamp01(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function aliceClampFinite(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function aliceSanitizeCompanionStageState(
+  raw: unknown,
+): AliceCompanionStageState {
+  const candidate =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const rawCameraValue = candidate.camera;
+  const rawCamera =
+    rawCameraValue && typeof rawCameraValue === "object"
+      ? (rawCameraValue as Record<string, unknown>)
+      : {};
+  return {
+    camera: {
+      zoom: aliceClamp01(
+        rawCamera.zoom,
+        ALICE_COMPANION_STAGE_DEFAULT.camera.zoom,
+      ),
+      yaw: aliceClampFinite(rawCamera.yaw, 0, -Math.PI, Math.PI),
+      pitch: aliceClampFinite(rawCamera.pitch, 0, -Math.PI / 2, Math.PI / 2),
+      pan: aliceClampFinite(rawCamera.pan, 0, -5, 5),
+    },
+  };
+}
+
+function aliceCompanionStageFile() {
+  const root =
+    process.env.MILAIDY_HOME ||
+    process.env.ELIZA_DATA_DIR ||
+    path.join(process.cwd(), "data");
+  return path.join(root, "companion", "stage.json");
+}
+
+function aliceReadCompanionStageState(): AliceCompanionStageState {
+  const stageFile = aliceCompanionStageFile();
+  try {
+    if (fs.existsSync(stageFile)) {
+      return aliceSanitizeCompanionStageState(
+        JSON.parse(fs.readFileSync(stageFile, "utf-8")),
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[companion-stage] Failed to read ${stageFile}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  return aliceSanitizeCompanionStageState(ALICE_COMPANION_STAGE_DEFAULT);
+}
+
+function aliceWriteCompanionStageState(nextState: AliceCompanionStageState) {
+  const stageFile = aliceCompanionStageFile();
+  try {
+    fs.mkdirSync(path.dirname(stageFile), { recursive: true });
+    fs.writeFileSync(stageFile, JSON.stringify(nextState, null, 2), "utf-8");
+  } catch (err) {
+    logger.warn(
+      `[companion-stage] Failed to persist ${stageFile}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+function aliceMergeCompanionStagePatch(
+  base: AliceCompanionStageState,
+  patch: unknown,
+) {
+  const patchRecord =
+    patch && typeof patch === "object" ? (patch as Record<string, unknown>) : {};
+  const patchCameraValue = patchRecord.camera;
+  const patchCamera =
+    patchCameraValue && typeof patchCameraValue === "object"
+      ? (patchCameraValue as Record<string, unknown>)
+      : {};
+  return {
+    camera: {
+      ...base.camera,
+      ...patchCamera,
+    },
+  };
+}
+
 async function handleCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -814,6 +937,61 @@ async function handleCompatRoute(
     return true;
   }
 
+  if (method === "GET" && url.pathname === "/api/companion/stage") {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    sendJsonResponse(res, 200, {
+      ok: true,
+      state: aliceReadCompanionStageState(),
+    });
+    return true;
+  }
+
+  const aliceBroadcastStageMatch = url.pathname.match(
+    /^\/api\/broadcast\/([a-zA-Z0-9-]+)\/stage$/,
+  );
+  if (method === "GET" && aliceBroadcastStageMatch) {
+    const channel = aliceBroadcastStageMatch[1];
+    if (channel !== "alice-cam") {
+      sendJsonResponse(res, 404, { error: "Unknown broadcast channel" });
+      return true;
+    }
+    sendJsonResponse(res, 200, {
+      ok: true,
+      channel,
+      state: aliceReadCompanionStageState(),
+    });
+    return true;
+  }
+
+  if (method === "POST" && url.pathname === "/api/companion/stage") {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const body = await readCompatJsonBody(req, res);
+    if (!body) return true;
+    if (!body.patch || typeof body.patch !== "object") {
+      sendJsonResponse(res, 400, { error: "Missing 'patch' field" });
+      return true;
+    }
+    const current = aliceReadCompanionStageState();
+    const merged = aliceSanitizeCompanionStageState(
+      aliceMergeCompanionStagePatch(current, body.patch),
+    );
+    aliceWriteCompanionStageState(merged);
+    sendJsonResponse(res, 200, { ok: true, state: merged });
+    return true;
+  }
+
+  if (method === "GET" && url.pathname === "/api/coding-agents") {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    sendJsonResponse(res, 200, []);
+    return true;
+  }
+
   // GET /api/agents — return the running agent's info.
   // The app runs a single agent; expose it under an `agents` array so older
   // health probes and desktop callers can use the same response shape.
@@ -851,6 +1029,8 @@ async function handleCompatRoute(
     );
     return true;
   }
+
+  if (await handleAliceDashboardFallbackRoutes(req, res, state)) return true;
 
   return handleDatabaseRowsCompatRoute(req, res, state);
 }
@@ -948,13 +1128,31 @@ export function patchHttpCreateServerForCompat(
         syncCompatConfigFiles();
       });
 
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+      if (
+        req.method === "GET" &&
+        (pathname === "/health" ||
+          pathname === "/health/live" ||
+          pathname === "/health/ready")
+      ) {
+        const health = buildKubeHealthResponse(
+          pathname,
+          Boolean(state?.kubeReady),
+          Math.floor(process.uptime()),
+        );
+        sendJsonResponse(res, health.statusCode, health.payload);
+        return;
+      }
+
       if (state) {
-        const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
         if (
           pathname.startsWith("/api/database") ||
           pathname.startsWith("/api/trajectories")
         ) {
           await ensureRuntimeSqlCompatibility(state.current);
+        }
+        if (!(await authorizeAgentStatusFallback(req, res, state))) {
+          return;
         }
 
         try {
@@ -1040,6 +1238,7 @@ export async function startApiServer(
   await initStewardWalletCache();
   const compatState: CompatRuntimeState = {
     current: (args[0]?.runtime as AgentRuntime | null) ?? null,
+    kubeReady: Boolean(args[0]?.runtime),
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
@@ -1056,6 +1255,7 @@ export async function startApiServer(
     const originalUpdateRuntime = server.updateRuntime as (
       runtime: AgentRuntime,
     ) => void;
+    const originalUpdateStartup = server.updateStartup;
 
     server.updateRuntime = (runtime: AgentRuntime) => {
       compatState.current = runtime;
@@ -1088,6 +1288,17 @@ export async function startApiServer(
           );
         }
       })();
+    };
+
+    server.updateStartup = (update) => {
+      const nextState = update.state;
+      if (nextState === "running") {
+        compatState.kubeReady = true;
+      } else if (nextState) {
+        compatState.kubeReady = false;
+      }
+
+      originalUpdateStartup(update);
     };
 
     syncElizaEnvAliases();

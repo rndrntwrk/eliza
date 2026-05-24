@@ -278,11 +278,29 @@ type ResolvedAppHero =
   | { kind: "file"; absolutePath: string; contentType: string }
   | { kind: "generated"; svg: string };
 
+function createGeneratedAppHeroFallback(slug: string): ResolvedAppHero {
+  return {
+    kind: "generated",
+    svg: createGeneratedAppHeroSvg({
+      name: slug,
+      displayName: packageNameToAppDisplayName(slug),
+      category: "app",
+      description: "",
+    }),
+  };
+}
+
 async function resolveAppHero(
   pluginManager: PluginManagerLike,
   slug: string,
 ): Promise<ResolvedAppHero | null> {
-  const registry = await pluginManager.refreshRegistry();
+  let registry: Map<string, RegistryPluginInfo>;
+  try {
+    registry = await pluginManager.refreshRegistry();
+  } catch {
+    return createGeneratedAppHeroFallback(slug);
+  }
+
   for (const entry of registry.values()) {
     const entrySlugs = new Set<string>();
     const nameSlug = packageNameToAppRouteSlug(entry.name);

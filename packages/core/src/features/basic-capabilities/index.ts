@@ -150,14 +150,21 @@ export {
 // Re-export plugin-manager security helpers (used by other plugins like
 // plugin-app-control to gate owner/admin-only actions without taking a dep
 // on @elizaos/agent, which would create a layer cycle).
+//
+// Direct import from ../plugin-manager/security.ts (NOT the barrel) so the
+// browser bundle never evaluates plugin-manager/index.ts, whose static
+// imports drag PluginManagerService and pluginAction → plugin-handlers/
+// create.ts → fs-extra → graceful-fs into the SPA. graceful-fs reads
+// fs.realpath.native at module init; in a browser where fs is stubbed
+// empty, that lookup throws TypeError and kills SPA boot before React
+// mounts. createPluginAction / pluginAction / PluginMode are server-only
+// and have no browser-reachable consumer; dropping them from this re-export
+// is a pure dead-export prune.
 export {
-	createPluginAction,
 	hasAdminAccess,
 	hasOwnerAccess,
-	type PluginMode,
-	pluginAction,
 	type SecurityDeps,
-} from "../plugin-manager/index.ts";
+} from "../plugin-manager/security.ts";
 
 // ============================================================================
 // Structured JSON response interfaces.

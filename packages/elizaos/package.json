@@ -6,15 +6,23 @@
   "bin": {
     "elizaos": "./dist/cli.js"
   },
-  "main": "dist/index.js",
+  "main": "./src/index.ts",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "import": "./src/*.ts",
+      "default": "./src/*.ts"
+    }
   },
   "files": [
     "dist",
@@ -61,5 +69,6 @@
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "_aliceSourceMainSentinel": "v1"
 }

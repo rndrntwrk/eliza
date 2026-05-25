@@ -9,16 +9,16 @@
 
 import type { IAgentRuntime, JSONSchema, JsonValue } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { TemplateValues } from "./template";
-import { resolveControlTemplates } from "./template";
+import type { TemplateValues } from "./template.js";
+import { resolveControlTemplates } from "./template.js";
 import type {
   ExtractionResult,
   FormControl,
   FormDefinition,
   FormIntent,
   IntentResult,
-} from "./types";
-import { getTypeHandler, parseValue, validateField } from "./validation";
+} from "./types.js";
+import { getTypeHandler, parseValue, validateField } from "./validation.js";
 
 const FORM_INTENTS: FormIntent[] = [
   "fill_form",

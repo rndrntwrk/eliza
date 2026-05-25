@@ -12,9 +12,9 @@ import type {
   Plugin,
   ServiceClass,
 } from "@elizaos/core";
-import { formEvaluator } from "./evaluators/extractor";
+import { formEvaluator } from "./evaluators/extractor.js";
 
-export * from "./types";
+export * from "./types.js";
 
 export {
   BUILTIN_TYPE_MAP,
@@ -22,7 +22,7 @@ export {
   getBuiltinType,
   isBuiltinType,
   registerBuiltinTypes,
-} from "./builtins";
+} from "./builtins.js";
 
 export {
   clearTypeHandlers,
@@ -32,7 +32,7 @@ export {
   parseValue,
   registerTypeHandler,
   validateField,
-} from "./validation";
+} from "./validation.js";
 
 export {
   deleteSession,
@@ -44,7 +44,7 @@ export {
   saveAutofillData,
   saveSession,
   saveSubmission,
-} from "./storage";
+} from "./storage.js";
 
 export {
   buildFormExtractorPromptSection,
@@ -53,7 +53,7 @@ export {
   detectCorrection,
   extractSingleField,
   parseFormExtractorOutput,
-} from "./extraction";
+} from "./extraction.js";
 
 export {
   calculateTTL,
@@ -63,17 +63,17 @@ export {
   isExpiringSoon,
   shouldConfirmCancel,
   shouldNudge,
-} from "./ttl";
+} from "./ttl.js";
 
-export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
+export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults.js";
 
-export { C, ControlBuilder, Form, FormBuilder } from "./builder";
+export { C, ControlBuilder, Form, FormBuilder } from "./builder.js";
 
-export { FormService } from "./service";
+export { FormService } from "./service.js";
 
-export { formAction, formRestoreAction } from "./actions/form";
-export { formEvaluator } from "./evaluators/extractor";
-export { formContextProvider } from "./providers/context";
+export { formAction, formRestoreAction } from "./actions/form.js";
+export { formEvaluator } from "./evaluators/extractor.js";
+export { formContextProvider } from "./providers/context.js";
 
 /**
  * Form Plugin
@@ -104,7 +104,7 @@ export const formPlugin = {
     {
       serviceType: "FORM",
       start: async (runtime: IAgentRuntime) => {
-        const { FormService } = await import("./service");
+        const { FormService } = await import("./service.js");
         return FormService.start(runtime);
       },
     } as ServiceClass,
@@ -116,7 +116,7 @@ export const formPlugin = {
       description: "Provides context about active form sessions",
       descriptionCompressed: "Active form session context.",
       get: async (runtime, message, state) => {
-        const { formContextProvider } = await import("./providers/context");
+        const { formContextProvider } = await import("./providers/context.js");
         return formContextProvider.get(runtime, message, state);
       },
     },

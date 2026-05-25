@@ -94,7 +94,7 @@ import type {
   FormControlOption,
   FormDefinition,
   FormDefinitionHooks,
-} from "./types";
+} from "./types.js";
 
 // ============================================================================
 // CONTROL BUILDER

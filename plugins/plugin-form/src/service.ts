@@ -104,7 +104,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { registerBuiltinTypes } from "./builtins";
+import { registerBuiltinTypes } from "./builtins.js";
 import {
   getAutofillData,
   getSessionById,
@@ -115,7 +115,7 @@ import {
   getStashedSessions as storageGetStashedSessions,
   getSubmissions as storageGetSubmissions,
   saveSession as storageSaveSession,
-} from "./storage";
+} from "./storage.js";
 import type {
   ActivationContext,
   ControlType,
@@ -131,9 +131,9 @@ import type {
   MissingFieldSummary,
   PendingExternalFieldSummary,
   UncertainFieldSummary,
-} from "./types";
-import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
-import { formatValue, validateField } from "./validation";
+} from "./types.js";
+import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types.js";
+import { formatValue, validateField } from "./validation.js";
 
 // ============================================================================
 // FORM SERVICE

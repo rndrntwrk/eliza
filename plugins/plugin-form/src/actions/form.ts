@@ -29,7 +29,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import type { FormService } from "../service";
+import type { FormService } from "../service.js";
 
 const FORM_SUBACTIONS = ["restore"] as const;
 type FormSubaction = (typeof FORM_SUBACTIONS)[number];

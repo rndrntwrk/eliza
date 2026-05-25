@@ -50,12 +50,12 @@
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import type { FormAutofillData, FormSession, FormSubmission } from "./types";
+import type { FormAutofillData, FormSession, FormSubmission } from "./types.js";
 import {
   FORM_AUTOFILL_COMPONENT,
   FORM_SESSION_COMPONENT,
   FORM_SUBMISSION_COMPONENT,
-} from "./types";
+} from "./types.js";
 
 const isRecord = (
   value: JsonValue | object,

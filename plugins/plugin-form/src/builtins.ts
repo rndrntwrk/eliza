@@ -63,7 +63,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
-import type { ControlType, FormControl, ValidationResult } from "./types";
+import type { ControlType, FormControl, ValidationResult } from "./types.js";
 
 // ============================================================================
 // VALIDATION HELPERS

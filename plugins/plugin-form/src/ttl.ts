@@ -54,8 +54,8 @@
  * This gives users a chance to save their work.
  */
 
-import type { FormDefinition, FormSession } from "./types";
-import { FORM_DEFINITION_DEFAULTS } from "./types";
+import type { FormDefinition, FormSession } from "./types.js";
+import { FORM_DEFINITION_DEFAULTS } from "./types.js";
 
 /**
  * Calculate TTL based on user effort.

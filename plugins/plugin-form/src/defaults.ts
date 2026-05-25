@@ -58,8 +58,8 @@
  * - Required defaults to false (explicit opt-in)
  */
 
-import type { FormControl, FormDefinition } from "./types";
-import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
+import type { FormControl, FormDefinition } from "./types.js";
+import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types.js";
 
 /**
  * Apply defaults to a FormControl.

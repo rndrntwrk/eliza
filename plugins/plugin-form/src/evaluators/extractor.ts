@@ -23,15 +23,15 @@ import {
   buildFormExtractorSchema,
   coerceExtractionsAgainstControls,
   parseFormExtractorOutput,
-} from "../extraction";
-import type { FormService } from "../service";
-import { buildTemplateValues, type TemplateValues } from "../template";
+} from "../extraction.js";
+import type { FormService } from "../service.js";
+import { buildTemplateValues, type TemplateValues } from "../template.js";
 import type {
   ExtractionResult,
   FormDefinition,
   FormIntent,
   FormSession,
-} from "../types";
+} from "../types.js";
 
 interface FormExtractorOutput {
   formIntent: FormIntent;

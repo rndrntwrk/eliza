@@ -54,13 +54,13 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { FormService } from "../service";
+import type { FormService } from "../service.js";
 import {
   buildTemplateValues,
   renderTemplate,
   resolveControlTemplates,
-} from "../template";
-import type { FormContextState } from "../types";
+} from "../template.js";
+import type { FormContextState } from "../types.js";
 
 function compactJson(value: unknown): string {
   return JSON.stringify(value, null, 2);

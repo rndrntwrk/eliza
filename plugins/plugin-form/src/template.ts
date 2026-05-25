@@ -3,7 +3,7 @@
  * @description Simple template resolution for form-controlled prompts
  */
 
-import type { FormControl, FormSession } from "./types";
+import type { FormControl, FormSession } from "./types.js";
 
 export type TemplateValues = Record<string, string>;
 

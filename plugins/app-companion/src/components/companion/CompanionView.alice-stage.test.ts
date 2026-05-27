@@ -48,6 +48,30 @@ describe("Alice companion stage integration", () => {
     expect(sharedStyles).toContain("@media (max-width: 767px)");
   });
 
+  it("does not block the companion shell on bundled VRM prefetch", () => {
+    const shellSource = fs.readFileSync(
+      path.join(__dirname, "CompanionShell.tsx"),
+      "utf8",
+    );
+
+    expect(shellSource).toContain("<CompanionView />");
+    expect(shellSource).not.toContain("vrmsReady");
+    expect(shellSource).not.toContain("Promise.allSettled");
+    expect(shellSource).not.toContain('LoadingScreen phase="ready"');
+    expect(shellSource).not.toContain("getVrmUrl(1)");
+  });
+
+  it("uses Alice as the companion viewer fallback avatar", () => {
+    const viewerSource = fs.readFileSync(
+      path.join(__dirname, "../avatar/VrmViewer.tsx"),
+      "utf8",
+    );
+
+    expect(viewerSource).toContain("getDefaultBundledVrmIndex");
+    expect(viewerSource).toContain("getVrmUrl(getDefaultBundledVrmIndex())");
+    expect(viewerSource).not.toContain("getVrmUrl(1)");
+  });
+
   it("keeps Alice identity attached to live capture launch paths", () => {
     const operatorSource = fs.readFileSync(
       path.join(__dirname, "../operator/useCompanionStageOperator.ts"),

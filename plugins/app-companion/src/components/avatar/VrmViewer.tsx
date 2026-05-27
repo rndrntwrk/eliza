@@ -12,7 +12,11 @@ import {
   type CompanionVrmPowerMode,
 } from "@elizaos/ui";
 import { useEffect, useEffectEvent, useRef } from "react";
-import { getVrmCount, getVrmUrl } from "../../vrm-assets";
+import {
+  getDefaultBundledVrmIndex,
+  getVrmCount,
+  getVrmUrl,
+} from "../../vrm-assets";
 import {
   type CameraProfile,
   type InteractionMode,
@@ -27,13 +31,13 @@ import {
 
 /** Resolved lazily — boot config may not be set at module-load time (bundled builds). */
 function getDefaultVrmPath(): string {
-  return getVrmUrl(1);
+  return getVrmUrl(getDefaultBundledVrmIndex());
 }
 
 export type VrmViewerProps = {
   /** When false the loaded scene stays resident but the render loop is paused */
   active?: boolean;
-  /** Path to the VRM file to load (default: bundled Miwaifus #1) */
+  /** Path to the VRM file to load (default: Alice bundled avatar when available) */
   vrmPath?: string;
   /** Enable drag-rotate + wheel/pinch zoom camera controls */
   interactive?: boolean;

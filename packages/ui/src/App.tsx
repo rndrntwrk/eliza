@@ -663,6 +663,19 @@ export function App() {
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();
+  // Public /companion/ route bypasses startup + auth gates per the frontier
+  // companion spec: the base companion page must be visible without auth,
+  // triggers, or mode switches. The static-file server already classifies
+  // /companion/ as a public UI route (see static-file-server.ts
+  // isPublicCompanionUiPath); this matches that classification at the SPA
+  // shell layer so the OnboardingUiOverlay / LoginView do not preempt the
+  // companion shell render path. Path is sampled once on mount — SPA
+  // navigation within the app keeps the originally-derived value, which
+  // is the correct behaviour since /companion/ is an entry surface.
+  const isPublicCompanionRoute = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.location.pathname.replace(/\/+$/, "") === "/companion";
+  }, []);
   // Auth gate — only active after the coordinator reaches "ready".
   // During onboarding / pairing / startup phases the StartupShell handles
   // its own gate (bootstrap step), so we skip the check.
@@ -1194,7 +1207,12 @@ export function App() {
   // StartupCoordinator gate — the coordinator is the sole startup authority.
   // Non-ready phases are handled by StartupShell (which renders the appropriate
   // view for each coordinator phase: loading, pairing, onboarding, or error).
-  if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
+  // /companion/ is exempt: it is a public surface and must render the
+  // companion shell directly even when the coordinator is mid-bootstrap.
+  if (
+    !isPublicCompanionRoute &&
+    (startupCoordinator.phase !== "ready" || !onboardingComplete)
+  ) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupShell />
@@ -1208,7 +1226,8 @@ export function App() {
   // "unauthenticated": render LoginView.
   // "authenticated": proceed to the main shell.
   // "server_unavailable": show a retryable startup failure.
-  if (isCoordinatorReady && !isPopout) {
+  // /companion/ is exempt: public surface, no LoginView gate.
+  if (isCoordinatorReady && !isPopout && !isPublicCompanionRoute) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>

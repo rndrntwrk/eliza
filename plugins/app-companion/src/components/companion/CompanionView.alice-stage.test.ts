@@ -36,10 +36,13 @@ describe("Alice companion stage integration", () => {
     expect(companionSource).toContain("companion-chat-dock");
     expect(companionSource).toContain("<CompanionShell");
     expect(overlaySource).toContain("BubbleActionButton");
+    expect(overlaySource).toContain("DialogDescription");
     expect(overlaySource).toContain('data-testid="companion-stage-actions-launcher"');
     expect(overlaySource).toContain('data-testid="companion-stage-actions-bubble"');
     expect(overlaySource).toContain('aria-expanded={expanded}');
     expect(overlaySource).toContain('id="alice-stage-actions-panel"');
+    expect(overlaySource).toContain("!h-[calc(100dvh-6rem)]");
+    expect(overlaySource).toContain("overflow-y-auto overscroll-contain");
     expect(overlaySource).not.toContain("hidden -translate-y-1/2 md:block");
     expect(sharedStyles).toContain(".companion-stage-overlay");
     expect(sharedStyles).toContain(

@@ -2,6 +2,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
   useApp,
 } from "@elizaos/ui";
@@ -26,7 +27,7 @@ type CompanionStageOperator = ReturnType<
 >;
 
 const SHEET_DIALOG_CLASSNAME =
-  "!left-4 !top-20 !bottom-4 !m-0 !w-[min(24rem,calc(100vw-2rem))] !translate-x-0 !translate-y-0 gap-0 overflow-hidden rounded-[28px] border border-white/10 bg-[#07090e]/94 p-0 shadow-[0_28px_90px_rgba(0,0,0,0.48)] backdrop-blur-2xl max-sm:!left-3 max-sm:!right-3 max-sm:!top-auto max-sm:!bottom-4 max-sm:!w-auto max-sm:!translate-x-0 max-sm:!translate-y-0";
+  "!left-4 !top-20 !bottom-auto !m-0 !h-[calc(100dvh-6rem)] !max-h-[calc(100dvh-6rem)] !w-[min(24rem,calc(100vw-2rem))] !translate-x-0 !translate-y-0 gap-0 overflow-hidden rounded-[28px] border border-white/10 bg-[#07090e]/94 p-0 shadow-[0_28px_90px_rgba(0,0,0,0.48)] backdrop-blur-2xl max-sm:!left-3 max-sm:!right-3 max-sm:!top-auto max-sm:!bottom-4 max-sm:!h-[min(calc(100dvh-1.5rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),42rem)] max-sm:!max-h-[min(calc(100dvh-1.5rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),42rem)] max-sm:!w-auto max-sm:!translate-x-0 max-sm:!translate-y-0";
 const SECTION_CLASSNAME =
   "border-t border-white/8 pt-4 first:border-t-0 first:pt-0";
 const SECTION_TITLE_CLASSNAME =
@@ -425,6 +426,10 @@ export function CompanionStageOperatorOverlay({
               <DialogTitle className="text-sm font-medium text-white/90">
                 Action Log
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                Alice live, avatar, world, and utility actions for the
+                companion stage.
+              </DialogDescription>
               <Button
                 type="button"
                 variant="ghost"

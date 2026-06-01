@@ -150,6 +150,7 @@ export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";
+export { composePromptFromState } from "./utils";
 // Export onboarding providers
 export * from "./providers/onboarding-progress";
 // Export skill eligibility provider

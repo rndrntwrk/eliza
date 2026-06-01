@@ -77,7 +77,8 @@ type CompanionEmote = {
   [key: string]: unknown;
 };
 
-const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion";
+const COMPANION_EMOTES_MODULE: string =
+  "@elizaos/app-companion/emotes/catalog";
 let companionEmotesPromise: Promise<{
   catalog: CompanionEmote[];
   byId: Map<string, CompanionEmote>;

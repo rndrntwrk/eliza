@@ -27,6 +27,11 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import {
+  EMOTE_BY_ID,
+  EMOTE_CATALOG,
+  type EmoteDef,
+} from "../emotes/catalog.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
@@ -69,38 +74,11 @@ function resolveTerminalShellCommand(): {
   };
 }
 
-type CompanionEmote = {
-  id: string;
-  path: string;
-  duration?: number;
-  loop?: boolean;
-  [key: string]: unknown;
-};
-
-const COMPANION_EMOTES_MODULE: string =
-  "@elizaos/app-companion/emotes/catalog";
-let companionEmotesPromise: Promise<{
-  catalog: CompanionEmote[];
-  byId: Map<string, CompanionEmote>;
-}> | null = null;
-
-async function loadCompanionEmotes(): Promise<{
-  catalog: CompanionEmote[];
-  byId: Map<string, CompanionEmote>;
-}> {
-  companionEmotesPromise ??= import(/* @vite-ignore */ COMPANION_EMOTES_MODULE)
-    .then((loaded) => {
-      const catalog = Array.isArray(loaded.EMOTE_CATALOG)
-        ? (loaded.EMOTE_CATALOG as CompanionEmote[])
-        : [];
-      const byId =
-        loaded.EMOTE_BY_ID instanceof Map
-          ? (loaded.EMOTE_BY_ID as Map<string, CompanionEmote>)
-          : new Map(catalog.map((emote) => [emote.id, emote]));
-      return { catalog, byId };
-    })
-    .catch(() => ({ catalog: [], byId: new Map<string, CompanionEmote>() }));
-  return companionEmotesPromise;
+function loadCompanionEmotes(): {
+  catalog: EmoteDef[];
+  byId: Map<string, EmoteDef>;
+} {
+  return { catalog: EMOTE_CATALOG, byId: EMOTE_BY_ID };
 }
 
 function toTerminalRunRequestBody(

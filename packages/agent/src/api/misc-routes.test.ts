@@ -63,6 +63,14 @@ describe("handleMiscRoutes emotes", () => {
           id: "wave",
           path: expect.stringContaining("waving-both-hands"),
         }),
+        expect.objectContaining({
+          id: "agreeing",
+          path: expect.stringContaining("Agreeing"),
+        }),
+        expect.objectContaining({
+          id: "gangnam-style",
+          path: expect.stringContaining("Gangnam Style"),
+        }),
       ]),
     );
   });

@@ -247,7 +247,74 @@ export async function handleMiscRoutes(
       duration: emote.duration,
       loop: false,
     });
-    json(res, { ok: true });
+
+    // Relay the emote to the LIVE broadcast. The operator-UI WS path above
+    // only reaches browser tabs subscribed to this agent; it never reaches
+    // the 555stream capture pipeline that renders the public broadcast.
+    // StreamControlService.broadcastEvent POSTs to the control-plane, which
+    // publishes show:emote:<session> on redis; capture-service-gpu subscribes
+    // and dispatches eliza:app-emote so VrmStage plays it on the streamed
+    // video track going to Cloudflare → Twitch/Kick/YouTube/Pump. The outcome
+    // is returned in the response (broadcast field) so a single curl confirms
+    // delivery even though the container's stdout is block-buffered.
+    const streamControl = state.runtime?.getService("stream555") as
+      | {
+          broadcastEvent?: (
+            topic: string,
+            payload: unknown,
+            sessionId?: string,
+          ) => Promise<{ ok: boolean; sent: boolean }>;
+          getBoundSessionId?: () => string | null;
+        }
+      | null
+      | undefined;
+    const broadcast: Record<string, unknown> = {
+      hasService: Boolean(streamControl),
+      hasBroadcastEvent: typeof streamControl?.broadcastEvent === "function",
+      boundSessionId:
+        typeof streamControl?.getBoundSessionId === "function"
+          ? streamControl.getBoundSessionId()
+          : null,
+      sent: false,
+    };
+    if (typeof streamControl?.broadcastEvent === "function") {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const broadcastPromise = streamControl.broadcastEvent("emote", {
+        emoteId: emote.id,
+        path: emote.path,
+        duration: emote.duration,
+        loop: false,
+      });
+      // Keep a no-op handler so a post-timeout rejection never becomes an
+      // unhandled rejection if broadcastEvent loses the race below.
+      broadcastPromise.catch(() => {});
+      try {
+        const result = await Promise.race([
+          broadcastPromise,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(new Error("broadcastEvent timed out after 5000ms")),
+              5000,
+            );
+          }),
+        ]);
+        broadcast.sent = true;
+        broadcast.result = result;
+      } catch (err) {
+        broadcast.sent = false;
+        broadcast.error =
+          err instanceof Error ? (err.stack ?? err.message) : String(err);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } else {
+      broadcast.reason = streamControl
+        ? "stream555 service has no broadcastEvent method"
+        : "stream555 service not available";
+    }
+
+    json(res, { ok: true, broadcast });
     return true;
   }
 

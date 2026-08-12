@@ -1,5 +1,5 @@
 /** Covers the default voice-preset build script's preset format output. Deterministic. */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -29,6 +29,14 @@ function runGenerator(args: string[]): string {
 	});
 }
 
+function runGeneratorResult(args: string[]) {
+	return spawnSync("bun", [SCRIPT, ...args], {
+		cwd: APP_CORE_ROOT,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+}
+
 describe("build-default-voice-preset.mjs", () => {
 	let dir: string;
 
@@ -43,7 +51,13 @@ describe("build-default-voice-preset.mjs", () => {
 	it("--placeholder writes a format-valid .bin that round-trips through readVoicePresetFile", () => {
 		expect(existsSync(SCRIPT)).toBe(true);
 		const out = path.join(dir, "voice-preset-default.bin");
-		const stdout = runGenerator(["--placeholder", "--out", out]);
+		const stdout = runGenerator([
+			"--placeholder",
+			"--concurrency",
+			"3",
+			"--out",
+			out,
+		]);
 		expect(stdout).toMatch(/PLACEHOLDER/);
 		expect(existsSync(out)).toBe(true);
 
@@ -62,6 +76,41 @@ describe("build-default-voice-preset.mjs", () => {
 		const parsed = readVoicePresetFile(new Uint8Array(readFileSync(out)));
 		expect(parsed.embedding.length).toBe(64);
 	});
+
+	it.each(["--dim", "--concurrency"])(
+		"rejects malformed %s values before creating output",
+		(flag) => {
+			const malformedValues = [
+				["suffix", "1junk"],
+				["fraction", "1.5"],
+				["positive-sign", "+1"],
+				["negative", "-1"],
+				["whitespace", " "],
+				["zero", "0"],
+				["unsafe", "9007199254740992"],
+				["missing", undefined],
+				["flag-shaped", "--placeholder"],
+			] as const;
+
+			for (const [name, value] of malformedValues) {
+				const outputDir = path.join(dir, `${flag.slice(2)}-${name}`);
+				const out = path.join(outputDir, "preset.bin");
+				const result = runGeneratorResult([
+					"--placeholder",
+					"--out",
+					out,
+					flag,
+					...(value === undefined ? [] : [value]),
+				]);
+
+				expect(result.status, `${flag} ${name}`).not.toBe(0);
+				expect(result.stderr, `${flag} ${name}`).toContain(
+					`${flag} must be a positive safe integer`,
+				);
+				expect(existsSync(outputDir), `${flag} ${name}`).toBe(false);
+			}
+		},
+	);
 
 	it("refuses to build a real preset without an embedding (exit 2, guidance message)", () => {
 		let threw = false;

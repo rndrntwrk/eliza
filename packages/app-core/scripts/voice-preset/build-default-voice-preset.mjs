@@ -43,6 +43,17 @@ import path from "node:path";
 
 const PLACEHOLDER_DEFAULT_DIM = 256;
 
+function parsePositiveSafeInteger(value, flag) {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error(`${flag} must be a positive safe integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive safe integer`);
+  }
+  return parsed;
+}
+
 function parseArgs(argv) {
   const args = {
     placeholder: false,
@@ -72,10 +83,10 @@ function parseArgs(argv) {
         args.out = argv[++i];
         break;
       case "--dim":
-        args.dim = Number.parseInt(argv[++i], 10);
+        args.dim = parsePositiveSafeInteger(argv[++i], "--dim");
         break;
       case "--concurrency":
-        args.concurrency = Number.parseInt(argv[++i], 10);
+        args.concurrency = parsePositiveSafeInteger(argv[++i], "--concurrency");
         break;
       case "-h":
       case "--help":

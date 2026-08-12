@@ -27,40 +27,46 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getValidationRetryPolicy({ env = process.env } = {}) {
-  const explicitAttempts = Number.parseInt(
-    env.ELIZA_CDN_VALIDATE_ATTEMPTS ?? "",
-    10,
+function parseOptionalSafeInteger(env, key, minimum, requirement) {
+  const raw = env[key];
+  if (raw === undefined || raw === "") {
+    return null;
+  }
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new Error(`${key} must be ${requirement}`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new Error(`${key} must be ${requirement}`);
+  }
+  return parsed;
+}
+
+export function getValidationRetryPolicy({ env = process.env } = {}) {
+  const explicitAttempts = parseOptionalSafeInteger(
+    env,
+    "ELIZA_CDN_VALIDATE_ATTEMPTS",
+    1,
+    "a positive safe integer",
   );
-  const explicitDelayMs = Number.parseInt(
-    env.ELIZA_CDN_VALIDATE_DELAY_MS ?? "",
-    10,
+  const explicitDelayMs = parseOptionalSafeInteger(
+    env,
+    "ELIZA_CDN_VALIDATE_DELAY_MS",
+    0,
+    "a non-negative safe integer",
   );
-  const explicitConcurrency = Number.parseInt(
-    env.ELIZA_CDN_VALIDATE_CONCURRENCY ?? "",
-    10,
+  const explicitConcurrency = parseOptionalSafeInteger(
+    env,
+    "ELIZA_CDN_VALIDATE_CONCURRENCY",
+    1,
+    "a positive safe integer",
   );
   const inCi = String(env.CI ?? "").toLowerCase() === "true";
 
   return {
-    attempts:
-      Number.isFinite(explicitAttempts) && explicitAttempts > 0
-        ? explicitAttempts
-        : inCi
-          ? 3
-          : 1,
-    delayMs:
-      Number.isFinite(explicitDelayMs) && explicitDelayMs >= 0
-        ? explicitDelayMs
-        : inCi
-          ? 5000
-          : 0,
-    concurrency:
-      Number.isFinite(explicitConcurrency) && explicitConcurrency > 0
-        ? explicitConcurrency
-        : inCi
-          ? 4
-          : 2,
+    attempts: explicitAttempts ?? (inCi ? 3 : 1),
+    delayMs: explicitDelayMs ?? (inCi ? 5000 : 0),
+    concurrency: explicitConcurrency ?? (inCi ? 4 : 2),
   };
 }
 
@@ -234,6 +240,7 @@ export function resolveValidationGitRef({
 }
 
 export async function main({ cwd = repoRoot, env = process.env } = {}) {
+  const retryPolicy = getValidationRetryPolicy({ env });
   const releaseTag = resolveElizaReleaseTag({ env });
   const gitSha = resolveCurrentGitSha({ cwd, env });
   const explicitValidationRef = env.ELIZA_CDN_VALIDATION_REF?.trim();
@@ -279,7 +286,6 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
     }
   }
 
-  const retryPolicy = getValidationRetryPolicy();
   const appAssetRoot = env.ELIZA_CDN_APP_ASSET_ROOT || "packages/app/public";
   const homepageAssetRoot =
     env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";

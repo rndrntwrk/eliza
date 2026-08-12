@@ -30,6 +30,8 @@ export const DiscordConnectionMetadataSchema = z
       .string()
       .regex(/^\d{15,20}$/)
       .optional(),
+    dmPolicy: z.enum(["pairing", "allowlist", "open", "disabled"]).optional(),
+    allowFrom: z.array(z.string().trim().min(1)).optional(),
   })
   .refine(
     (data) => {
@@ -131,6 +133,12 @@ export const discordConnections = pgTable(
      *
      * @property {string[]} keywords - Trigger words for "keyword" responseMode.
      *   Case-insensitive substring matching. Required when responseMode is "keyword".
+     *
+     * @property {"pairing" | "allowlist" | "open" | "disabled"} dmPolicy -
+     *   Direct-message access policy.
+     *
+     * @property {string[]} allowFrom - Discord user IDs allowed to send DMs
+     *   under the allowlist or pairing policy.
      *
      * @example
      * // Bot responds only when mentioned in #general channel

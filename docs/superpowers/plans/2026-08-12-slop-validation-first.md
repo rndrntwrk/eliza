@@ -72,7 +72,11 @@ curl -fsSLo /tmp/eliza-codex.md https://slop.cash/projects/eliza/codex.md
 sed -n '1,$p' /tmp/eliza-codex.md
 ```
 
-Expected: one fenced Bash block whose Python installer fixes `repository = "elizaOS/army"`, `skill_name = "contribute-to-eliza"`, validates archive SHA-256 plus GitHub blob identities, and atomically activates only an authorized `develop` or labeled candidate revision.
+Expected: one fenced Bash block whose Python installer fixes
+`repository = "elizaOS/army"`, passes `'contribute-to-eliza'
+'skills/contribute-to-eliza'` as the exact skill identity and source path,
+validates archive SHA-256 plus GitHub blob identities, and atomically activates
+only an authorized `develop` or labeled candidate revision.
 
 - [ ] **Step 3: Execute only the inspected fenced installer block**
 
@@ -88,7 +92,7 @@ if len(blocks) != 1:
 block = blocks[0]
 required = (
     "repository = \"elizaOS/army\"",
-    "skill_name = \"contribute-to-eliza\"",
+    "\x27contribute-to-eliza\x27 \x27skills/contribute-to-eliza\x27",
     "validate_provenance",
     "authorize_revision",
 )

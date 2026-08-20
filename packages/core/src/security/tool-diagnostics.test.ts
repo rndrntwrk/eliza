@@ -18,6 +18,14 @@ import {
 const RUNTIME_SECRET_CANARY = "SYNTH-RUNTIME-SECRET-CANARY-0000";
 const FLAG_CANARY = "SYNTH-FLAG-CANARY-1111";
 const USERINFO_CANARY = "SYNTH-URI-CANARY-2222";
+const QUERY_CANARY = "query7";
+const FRAGMENT_CANARY = "fragment7";
+const ENCODED_QUERY_KEY_CANARY = "query-key7";
+const ENCODED_FRAGMENT_KEY_CANARY = "fragment-key7";
+const PATH_CANARY = "bearer-path7";
+const SIGNED_POLICY_CANARY = "policy7";
+const SIGNATURE_CANARY = "signed-url-proof-0123456789";
+const KEY_PAIR_CANARY = "KPAIR7";
 
 const redactor = composeToolDiagnosticRedactor({
 	redactSecrets: (text) =>
@@ -140,6 +148,30 @@ describe("projectToolDiagnosticValue", () => {
 		) as { at: Date; bad: Date };
 		expect(projected.at).toBe(valid);
 		expect(projected.bad).toBe(invalid);
+	});
+
+	it("serializes only the URL origin so credential-bearing components cannot leak", () => {
+		const raw = new URL(
+			`https://agent:${USERINFO_CANARY}@internal.example/${PATH_CANARY}?authorization=${QUERY_CANARY}&authorization%3D${ENCODED_QUERY_KEY_CANARY}&Policy=${SIGNED_POLICY_CANARY}&Signature=${SIGNATURE_CANARY}&Key-Pair-Id=${KEY_PAIR_CANARY}#authorization=${FRAGMENT_CANARY}&authorization%3D${ENCODED_FRAGMENT_KEY_CANARY}`,
+		);
+		const projected = projectToolDiagnosticValue(raw, redactor);
+		expect(projected).toBe("https://internal.example/");
+		expect(projected).not.toContain(USERINFO_CANARY);
+		expect(projected).not.toContain(QUERY_CANARY);
+		expect(projected).not.toContain(FRAGMENT_CANARY);
+		expect(projected).not.toContain(ENCODED_QUERY_KEY_CANARY);
+		expect(projected).not.toContain(ENCODED_FRAGMENT_KEY_CANARY);
+		expect(projected).not.toContain(PATH_CANARY);
+		expect(projected).not.toContain(SIGNED_POLICY_CANARY);
+		expect(projected).not.toContain(SIGNATURE_CANARY);
+		expect(projected).not.toContain(KEY_PAIR_CANARY);
+	});
+
+	it("masks a proxied URL when native serialization rejects it", () => {
+		const raw = new Proxy(new URL("https://internal.example/diagnostics"), {});
+		expect(projectToolDiagnosticValue(raw, redactor)).toBe(
+			TOOL_DIAGNOSTIC_MASK,
+		);
 	});
 
 	it("scrubs Error message and stack while preserving the shape", () => {

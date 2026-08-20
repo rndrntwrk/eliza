@@ -98,6 +98,21 @@ function toContentValue(
 	seen: WeakSet<object>,
 	depth: number,
 ): ContentValue {
+	try {
+		return toContentValueUnchecked(value, redactDiagnosticText, seen, depth);
+	} catch {
+		// error-policy:J1 completion diagnostics are a serialization boundary; an
+		// exotic value must degrade to a mask, never invalidate a settled action.
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+}
+
+function toContentValueUnchecked(
+	value: unknown,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): ContentValue {
 	if (
 		value === undefined ||
 		value === null ||
@@ -112,6 +127,18 @@ function toContentValue(
 	if (typeof value !== "object") {
 		return redactDiagnosticText(String(value));
 	}
+	if (value instanceof Date) {
+		const timestamp = Date.prototype.getTime.call(value);
+		return Number.isNaN(timestamp)
+			? "Invalid Date"
+			: Date.prototype.toISOString.call(value);
+	}
+	if (value instanceof Error) {
+		const name =
+			typeof value.name === "string" && value.name ? value.name : "Error";
+		const message = typeof value.message === "string" ? value.message : "";
+		return redactDiagnosticText(`${name}: ${message}`);
+	}
 	if (depth >= MAX_CONTENT_VALUE_DEPTH || seen.has(value)) {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
@@ -123,6 +150,9 @@ function toContentValue(
 			);
 		}
 		if (isContentRecord(value)) {
+			// Preserve own enumerable diagnostic state for other object kinds. Do not
+			// explicitly call arbitrary toJSON/toString hooks; unsupported
+			// collection/regex internals are intentionally lossy.
 			const record: Record<string, ContentValue> = {};
 			for (const [key, entry] of Object.entries(value)) {
 				if (isSensitiveKeyName(key)) {

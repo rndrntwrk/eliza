@@ -1336,6 +1336,7 @@ describe("executePlannedToolCall", () => {
 	it("bounds cyclic and deep handler results before completion diagnostics", async () => {
 		const cyclic: Record<string, unknown> = { label: "loop" };
 		cyclic.self = cyclic;
+		const fallbackCanary = "sk-0123456789abcdefghij";
 		const cyclicDate = new Date("2026-08-20T00:00:00.000Z") as Date & {
 			apiKey?: string;
 			self?: unknown;
@@ -1344,7 +1345,27 @@ describe("executePlannedToolCall", () => {
 			apiKey: { enumerable: true, value: "short-secret" },
 			self: { enumerable: true, value: cyclicDate },
 		});
-		const fallbackCanary = "sk-0123456789abcdefghij";
+		const invalidDate = new Date(Number.NaN);
+		const urlQueryCanary = "query7";
+		const urlFragmentCanary = "fragment7";
+		const urlPathCanary = "bearer-path7";
+		const urlPolicyCanary = "policy7";
+		const diagnosticUrl = new URL(
+			`https://agent:${fallbackCanary}@example.com/${urlPathCanary}?Policy=${urlPolicyCanary}&authorization=${urlQueryCanary}#authorization=${urlFragmentCanary}`,
+		);
+		const diagnosticError = new Error(
+			`connection refused --token=${fallbackCanary}`,
+		);
+		diagnosticError.name = "ConnectorFailure";
+		const proxiedDate = new Proxy(new Date("2026-08-20T01:00:00.000Z"), {});
+		const proxiedUrl = new Proxy(
+			new URL("https://example.com/proxied-diagnostics"),
+			{},
+		);
+		const symbolicErrorName = new Error("symbolic error name");
+		Object.defineProperty(symbolicErrorName, "name", {
+			value: Symbol("hostile-error-name"),
+		});
 		const fallbackValue = Symbol(fallbackCanary);
 		let deep: Record<string, unknown> = { leaf: "must-be-bounded" };
 		for (let depth = 0; depth < 12; depth += 1) {
@@ -1361,6 +1382,12 @@ describe("executePlannedToolCall", () => {
 					actionName: "RETURN_DATA",
 					cyclic,
 					cyclicDate,
+					invalidDate,
+					diagnosticUrl,
+					diagnosticError,
+					proxiedDate,
+					proxiedUrl,
+					symbolicErrorName,
 					deep,
 					fallbackValue,
 				},
@@ -1398,6 +1425,12 @@ describe("executePlannedToolCall", () => {
 		expect((rawCyclic as Record<string, unknown>).self).toBe(cyclic);
 		expect(result.data?.cyclicDate).toBe(cyclicDate);
 		expect(cyclicDate.self).toBe(cyclicDate);
+		expect(result.data?.invalidDate).toBe(invalidDate);
+		expect(result.data?.diagnosticUrl).toBe(diagnosticUrl);
+		expect(result.data?.diagnosticError).toBe(diagnosticError);
+		expect(result.data?.proxiedDate).toBe(proxiedDate);
+		expect(result.data?.proxiedUrl).toBe(proxiedUrl);
+		expect(result.data?.symbolicErrorName).toBe(symbolicErrorName);
 		expect(result.data?.deep).toBe(deep);
 		expect(result.data?.fallbackValue).toBe(fallbackValue);
 		expect(settledResult).toBe(result);
@@ -1415,16 +1448,27 @@ describe("executePlannedToolCall", () => {
 			const diagnosticData = (
 				diagnosticSurface as { data?: Record<string, unknown> } | undefined
 			)?.data;
-			expect(diagnosticData?.cyclicDate).toEqual({
-				apiKey: "[REDACTED]",
-				self: "[REDACTED]",
-			});
+			expect(diagnosticData?.cyclicDate).toBe("2026-08-20T00:00:00.000Z");
+			expect(diagnosticData?.invalidDate).toBe("Invalid Date");
+			expect(diagnosticData?.diagnosticUrl).toEqual(expect.any(String));
+			expect(diagnosticData?.diagnosticUrl).toBe("https://example.com/");
+			expect(diagnosticData?.diagnosticError).toEqual(expect.any(String));
+			expect(String(diagnosticData?.diagnosticError)).toContain(
+				"ConnectorFailure: connection refused",
+			);
+			expect(diagnosticData?.proxiedDate).toBe("[REDACTED]");
+			expect(diagnosticData?.proxiedUrl).toBe("[REDACTED]");
+			expect(diagnosticData?.symbolicErrorName).toBe("[REDACTED]");
 			const serialized = JSON.stringify(diagnosticSurface);
 			expect(serialized).toContain('"self":"[REDACTED]"');
 			expect(serialized).toContain('"deep":');
 			expect(serialized).toContain('"fallbackValue":');
 			expect(serialized).not.toContain("must-be-bounded");
 			expect(serialized).not.toContain(fallbackCanary);
+			expect(serialized).not.toContain(urlQueryCanary);
+			expect(serialized).not.toContain(urlFragmentCanary);
+			expect(serialized).not.toContain(urlPathCanary);
+			expect(serialized).not.toContain(urlPolicyCanary);
 		}
 	});
 

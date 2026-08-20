@@ -4,19 +4,10 @@ on:
   pull_request:
     branches:
       - graphify/base-8d60e536-20260820
-  push:
-    branches:
-      - graphify/native-8d60e536-20260820
-    paths:
-      - .github/workflows/graphify-eliza-native.yml
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: graphify-eliza-8d60e536
-  cancel-in-progress: false
 
 jobs:
   graphify:

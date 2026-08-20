@@ -100,6 +100,21 @@ function projectValue(
 	seen: WeakSet<object>,
 	depth: number,
 ): unknown {
+	try {
+		return projectValueUnchecked(value, redactText, seen, depth);
+	} catch {
+		// error-policy:J1 diagnostic projection is a serialization boundary; an
+		// exotic object must degrade to an explicit mask, never fail the tool call.
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+}
+
+function projectValueUnchecked(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): unknown {
 	if (typeof value === "string") {
 		return redactText(value);
 	}
@@ -111,11 +126,22 @@ function projectValue(
 		return value;
 	}
 	if (value instanceof Date) {
-		// A Date carries no string payload to scrub. Pass it through untouched so
-		// downstream sanitizers keep their own Date semantics — in particular an
-		// invalid Date must keep failing normalization loudly instead of being
-		// flattened into a healthy-looking empty object.
+		// A Date carries no string payload to scrub. Pass it through so the final
+		// content converter can emit an ISO instant, an explicit invalid marker, or
+		// a mask when a spoofed/proxied value fails the intrinsic brand check.
 		return value;
+	}
+	if (typeof URL !== "undefined" && value instanceof URL) {
+		// URL credentials live in non-enumerable internal slots, so walking own
+		// properties would silently turn a useful diagnostic into `{}`. Retain only
+		// the origin: userinfo, path segments, signed queries, and fragments can all
+		// carry bearer material under provider-specific names.
+		const projectedUrl = new URL(URL.prototype.toString.call(value));
+		const safeOrigin =
+			projectedUrl.origin === "null"
+				? `${projectedUrl.protocol}//[REDACTED]`
+				: projectedUrl.origin;
+		return redactText(`${safeOrigin}/`);
 	}
 	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
 		return TOOL_DIAGNOSTIC_MASK;
@@ -136,9 +162,15 @@ function projectValue(
 		if (value instanceof Error) {
 			// Thrown values routinely interpolate the offending argument into
 			// their message; preserve the Error shape but scrub message/stack.
-			const projected = new Error(redactText(value.message));
-			projected.name = value.name;
-			projected.stack = value.stack ? redactText(value.stack) : undefined;
+			const message = value.message;
+			const name = value.name;
+			if (typeof message !== "string" || typeof name !== "string") {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const stack = typeof value.stack === "string" ? value.stack : undefined;
+			const projected = new Error(redactText(message));
+			projected.name = name || "Error";
+			projected.stack = stack ? redactText(stack) : undefined;
 			return projected;
 		}
 		let changed = false;

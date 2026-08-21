@@ -13,7 +13,10 @@ import {
   auditProjectsRequestedByArgs,
   writeAuditProjectPropagation,
 } from "./lib/playwright-audit-projects.mjs";
-import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
+import {
+  withElizaSourceNodeOptions,
+  withoutElizaSourceNodeOptions,
+} from "./lib/playwright-node-options.mjs";
 import {
   resolveExecutableFromPath,
   resolvePlaywrightNodeRuntime,
@@ -332,9 +335,9 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 // Those packages publish an `eliza-source` export condition pointing at `src`;
 // on a fresh CI install (`bun install --ignore-scripts`) they have no `dist`, so
 // under default node conditions the collector resolves a missing
-// `dist/index.js` and the whole lane dies before any spec runs. The tsx import
-// is also required by child Node/Vite processes because source packages retain
-// NodeNext `.js` specifiers while their worktree files are TypeScript.
+// `dist/index.js` and the whole lane dies before any spec runs. Other inherited
+// options remain intact; pre-capture package builds strip only the source
+// condition before resolving their packed exports.
 env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
 const runsAppAudit =
@@ -402,7 +405,10 @@ if (
     [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],
     {
       cwd: repoRoot,
-      env,
+      env: {
+        ...env,
+        NODE_OPTIONS: withoutElizaSourceNodeOptions(env.NODE_OPTIONS),
+      },
       stdio: "inherit",
     },
   );
@@ -438,7 +444,10 @@ if (
     ],
     {
       cwd: repoRoot,
-      env,
+      env: {
+        ...env,
+        NODE_OPTIONS: withoutElizaSourceNodeOptions(env.NODE_OPTIONS),
+      },
       stdio: "inherit",
     },
   );

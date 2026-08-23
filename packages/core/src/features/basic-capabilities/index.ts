@@ -1594,22 +1594,30 @@ export function createBasicCapabilitiesPlugin(
 					},
 				}
 			: {}),
-		async dispose(runtime) {
-			// Stop all services that may have been registered based on config.
-			// Optional chaining skips services that were not started.
-			await runtime.getService(TaskService.serviceType)?.stop();
-			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
-			await runtime.getService(PiiScrubService.serviceType)?.stop();
-			await runtime.getService(EvaluatorService.serviceType)?.stop();
-			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
-			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
-			await runtime
-				.getService(SensitiveRequestDispatchRegistryService.serviceType)
-				?.stop();
-			if (config.enableAutonomy) {
-				await runtime.getService(AutonomyService.serviceType)?.stop();
-			}
-		},
+		...(config.disableBasic
+			? {}
+			: {
+					async dispose(runtime: IAgentRuntime) {
+						// Stop all services that may have been registered based on config.
+						// Optional chaining skips services that were not started.
+						await runtime.getService(TaskService.serviceType)?.stop();
+						await runtime
+							.getService(EmbeddingGenerationService.serviceType)
+							?.stop();
+						await runtime.getService(PiiScrubService.serviceType)?.stop();
+						await runtime.getService(EvaluatorService.serviceType)?.stop();
+						await runtime
+							.getService(OptimizedPromptService.serviceType)
+							?.stop();
+						await runtime.getService(ChannelTopicsService.serviceType)?.stop();
+						await runtime
+							.getService(SensitiveRequestDispatchRegistryService.serviceType)
+							?.stop();
+						if (config.enableAutonomy) {
+							await runtime.getService(AutonomyService.serviceType)?.stop();
+						}
+					},
+				}),
 	};
 }
 

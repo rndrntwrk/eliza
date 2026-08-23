@@ -17,6 +17,7 @@ import { AgentRuntime } from "../../runtime.ts";
 import type { Character } from "../../types/agent.ts";
 import {
 	type CapabilitySettingFlags,
+	createBasicCapabilitiesPlugin,
 	type ExplicitCapabilityOptions,
 	resolveCapabilityConfig,
 } from "./index.ts";
@@ -92,6 +93,17 @@ describe("resolveCapabilityConfig", () => {
 });
 
 describe("basic-capabilities registration through the declaring plugin", () => {
+	it("removes every executable plugin surface when basic capabilities are disabled", () => {
+		const plugin = createBasicCapabilitiesPlugin({ disableBasic: true });
+
+		expect(plugin.actions).toEqual([]);
+		expect(plugin.providers).toEqual([]);
+		expect(plugin.evaluators).toEqual([]);
+		expect(plugin.services).toEqual([]);
+		expect(plugin.routes).toEqual([]);
+		expect(plugin.events).toEqual({});
+	});
+
 	it("registers only basic actions with the default config", async () => {
 		const runtime = await bootRuntime({
 			character: { name: "cap-default" } as Character,

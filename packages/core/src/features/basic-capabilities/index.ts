@@ -1577,11 +1577,11 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enablePluginManager ? pluginManagerCapability.services : []),
 		],
 		routes: [
-			...TURN_CONTROL_ROUTES,
-			...CHANNEL_TOPICS_ROUTES,
+			...(config.disableBasic ? [] : TURN_CONTROL_ROUTES),
+			...(config.disableBasic ? [] : CHANNEL_TOPICS_ROUTES),
 			...(config.enableAutonomy ? autonomyCapabilities.routes : []),
 		],
-		events,
+		events: config.disableBasic ? {} : events,
 		...(initFns.length > 0
 			? {
 					init: async (

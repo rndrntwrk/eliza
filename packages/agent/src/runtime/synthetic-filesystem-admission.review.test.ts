@@ -183,7 +183,9 @@ describe("exact-head filesystem synthetic admission", () => {
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_SYNTHETIC_MODE = "1";
 
-      const config = makeConfig(source === "load-path" ? externalDir : undefined);
+      const config = makeConfig(
+        source === "load-path" ? externalDir : undefined,
+      );
       await admitCurrentBaseline(config);
 
       const parentDir =
@@ -218,9 +220,10 @@ describe("exact-head filesystem synthetic admission", () => {
       packageName,
       markerPath,
     });
-    process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST = [...baseline, packageName].join(
-      ",",
-    );
+    process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST = [
+      ...baseline,
+      packageName,
+    ].join(",");
 
     const resolved = await resolvePlugins(config, { quiet: true });
     expect(resolved.some((plugin) => plugin.name === packageName)).toBe(true);

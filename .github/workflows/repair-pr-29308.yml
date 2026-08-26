@@ -1,0 +1,444 @@
+name: Repair PR 29308 synthetic admission
+
+on:
+  push:
+    branches:
+      - fix/pr-29308-filesystem-synthetic-admission
+
+permissions:
+  contents: write
+
+jobs:
+  apply-repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: fix/pr-29308-filesystem-synthetic-admission
+          fetch-depth: 0
+
+      - name: Apply bounded repair and regressions
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          resolver_path = Path("packages/agent/src/runtime/plugin-resolver.ts")
+          resolver = resolver_path.read_text()
+
+          old_admission = '''  // Synthetic/scenario execution is deny-by-default (#24394): only the
+          // composition-declared allowlist and the minimal boot-required set may
+          // proceed. This runs after every collection source (config, env,
+          // connectors, forced includes, app-manifest routing additions) so ambient
+          // authority cannot enter through any of them, and before the deny-list
+          // sweep because synthetic admission is jurisdictionally prior to operator
+          // opt-outs. Denials are persisted as a bounded ledger and fail the boot.
+          const syntheticPolicy = readSyntheticAdmissionPolicy();
+          if (syntheticPolicy.active) {
+            const admission = applySyntheticAdmission(
+              pluginsToLoad,
+              loadReasons,
+              syntheticPolicy,
+            );
+            if (admission.denials.length > 0 || admission.overflowDenialCount > 0) {
+              const ledgerPath = path.join(
+                resolveStateDir(),
+                "synthetic-admission-denials.json",
+              );
+              try {
+                await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
+                await fs.writeFile(
+                  ledgerPath,
+                  `${JSON.stringify(
+                    {
+                      deniedAt: new Date().toISOString(),
+                      denials: admission.denials,
+                      overflowDenialCount: admission.overflowDenialCount,
+                    },
+                    null,
+                    2,
+                  )}\\n`,
+                  "utf8",
+                );
+              } catch (ledgerError) {
+                // error-policy:J6 the ledger file is retention for CI; the denial
+                // itself still fails the boot below with the same ledger in context.
+                logger.warn(
+                  `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+                );
+              }
+              assertSyntheticAdmission(admission);
+            }
+          }
+          '''
+
+          new_admission = '''  // Synthetic/scenario execution is deny-by-default (#24394): only the
+          // composition-declared allowlist and the minimal boot-required set may
+          // proceed. The first pass covers collector and app-manifest sources before
+          // the deny sweep; the second pass below covers filesystem discovery before
+          // phase filtering or import. Denials are persisted as a bounded ledger and
+          // fail the boot.
+          const syntheticPolicy = readSyntheticAdmissionPolicy();
+          const enforceSyntheticAdmission = async (): Promise<void> => {
+            if (!syntheticPolicy.active) return;
+            const admission = applySyntheticAdmission(
+              pluginsToLoad,
+              loadReasons,
+              syntheticPolicy,
+            );
+            if (admission.denials.length === 0 && admission.overflowDenialCount === 0) {
+              return;
+            }
+            const ledgerPath = path.join(
+              resolveStateDir(),
+              "synthetic-admission-denials.json",
+            );
+            try {
+              await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
+              await fs.writeFile(
+                ledgerPath,
+                `${JSON.stringify(
+                  {
+                    deniedAt: new Date().toISOString(),
+                    denials: admission.denials,
+                    overflowDenialCount: admission.overflowDenialCount,
+                  },
+                  null,
+                  2,
+                )}\\n`,
+                "utf8",
+              );
+            } catch (ledgerError) {
+              // error-policy:J6 the ledger file is retention for CI; the denial
+              // itself still fails the boot below with the same ledger in context.
+              logger.warn(
+                `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+              );
+            }
+            assertSyntheticAdmission(admission);
+          };
+          await enforceSyntheticAdmission();
+          '''
+
+          if resolver.count(old_admission) != 1:
+              raise SystemExit("expected exact synthetic admission block once")
+          resolver = resolver.replace(old_admission, new_admission)
+
+          old_scan = '''  const scanDirs = mobilePlatform
+            ? []
+            : [
+                path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
+                ...(config.plugins?.load?.paths ?? []).map(resolveUserPath),
+              ];
+          const dropInRecords: Record<string, PluginInstallRecord> = {};
+          for (const dir of scanDirs) {
+            for (const [name, record] of Object.entries(await scanDropInPlugins(dir))) {
+              if (!dropInRecords[name]) dropInRecords[name] = record;
+            }
+          }
+          '''
+
+          new_scan = '''  const scanDirs: Array<{ dir: string; provenance: string }> = mobilePlatform
+            ? []
+            : [
+                {
+                  dir: path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
+                  provenance: "plugins/custom",
+                },
+                ...(config.plugins?.load?.paths ?? []).map(
+                  (configuredPath, index) => ({
+                    dir: resolveUserPath(configuredPath),
+                    provenance: `plugins.load.paths[${index}]`,
+                  }),
+                ),
+              ];
+          const dropInRecords: Record<string, PluginInstallRecord> = {};
+          const dropInLoadReasons = new Map<string, string>();
+          for (const { dir, provenance } of scanDirs) {
+            for (const [name, record] of Object.entries(await scanDropInPlugins(dir))) {
+              if (!dropInRecords[name]) {
+                dropInRecords[name] = record;
+                dropInLoadReasons.set(name, provenance);
+              }
+            }
+          }
+          '''
+
+          if resolver.count(old_scan) != 1:
+              raise SystemExit("expected exact drop-in scan block once")
+          resolver = resolver.replace(old_scan, new_scan)
+
+          old_merge_tail = '''  const { accepted: customPluginNames, skipped } = mergeDropInPlugins({
+            dropInRecords,
+            installRecords,
+            corePluginNames: corePluginSet,
+            denyList,
+            pluginsToLoad,
+          });
+
+          for (const msg of skipped) logger.warn(msg);
+          if (customPluginNames.length > 0) {
+            logger.info(
+              `[eliza] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
+            );
+          }
+
+          if (phase !== "all") {
+          '''
+
+          new_merge_tail = '''  const { accepted: customPluginNames, skipped } = mergeDropInPlugins({
+            dropInRecords,
+            installRecords,
+            corePluginNames: corePluginSet,
+            denyList,
+            pluginsToLoad,
+          });
+
+          for (const pluginName of customPluginNames) {
+            if (!loadReasons.has(pluginName)) {
+              loadReasons.set(
+                pluginName,
+                dropInLoadReasons.get(pluginName) ?? "custom plugins dir",
+              );
+            }
+          }
+          for (const msg of skipped) logger.warn(msg);
+          if (customPluginNames.length > 0) {
+            logger.info(
+              `[eliza] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
+            );
+          }
+
+          // Ejected and custom packages are discovered after the collector pass.
+          // Enforce the same policy on the completed load set before any phase can
+          // select or import those filesystem-backed capabilities.
+          await enforceSyntheticAdmission();
+
+          if (phase !== "all") {
+          '''
+
+          if resolver.count(old_merge_tail) != 1:
+              raise SystemExit("expected exact drop-in merge tail once")
+          resolver = resolver.replace(old_merge_tail, new_merge_tail)
+          resolver_path.write_text(resolver)
+
+          test_path = Path("packages/agent/src/runtime/synthetic-admission.test.ts")
+          test = test_path.read_text()
+          old_import = 'import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";'
+          new_import = '''import {
+            existsSync,
+            mkdirSync,
+            mkdtempSync,
+            readdirSync,
+            readFileSync,
+            rmSync,
+            writeFileSync,
+          } from "node:fs";'''
+          if test.count(old_import) != 1:
+              raise SystemExit("expected node:fs import once")
+          test = test.replace(old_import, new_import)
+
+          env_anchor = '''  "ELIZA_SKIP_PLUGINS",
+          ] as const;'''
+          env_replacement = '''  "ELIZA_SKIP_PLUGINS",
+            "ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES",
+          ] as const;'''
+          if test.count(env_anchor) != 1:
+              raise SystemExit("expected ENV_KEYS anchor once")
+          test = test.replace(env_anchor, env_replacement)
+
+          append = r'''
+
+          async function allowCurrentResolverBaseline(config: ElizaConfig): Promise<void> {
+            process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST = "";
+            let thrown: unknown;
+            try {
+              await resolvePlugins(config, { quiet: true });
+            } catch (error) {
+              thrown = error;
+            }
+            expect(thrown).toBeInstanceOf(ElizaError);
+            const admissionError = thrown as ElizaError;
+            expect(admissionError.code).toBe("SYNTHETIC_ADMISSION_DENIED");
+            const context = admissionError.context as {
+              denials: Array<{ packageName: string }>;
+            };
+            process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST = context.denials
+              .map((denial) => denial.packageName)
+              .join(",");
+          }
+
+          function writeFilesystemPlugin(params: {
+            parentDir: string;
+            packageName: string;
+            markerPath: string;
+          }): void {
+            const packageDir = path.join(params.parentDir, "fixture-plugin");
+            mkdirSync(packageDir, { recursive: true });
+            writeFileSync(
+              path.join(packageDir, "package.json"),
+              `${JSON.stringify(
+                {
+                  name: params.packageName,
+                  version: "1.0.0",
+                  type: "module",
+                  main: "./index.js",
+                },
+                null,
+                2,
+              )}\n`,
+            );
+            writeFileSync(
+              path.join(packageDir, "index.js"),
+              `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(
+                params.markerPath,
+              )}, "imported\\n");\nexport default { name: ${JSON.stringify(
+                params.packageName,
+              )}, description: "synthetic filesystem admission fixture", actions: [] };\n`,
+            );
+          }
+
+          async function expectFilesystemPluginDenied(params: {
+            config: ElizaConfig;
+            packageName: string;
+            markerPath: string;
+            expectedProvenance: string;
+            stateDir: string;
+          }): Promise<void> {
+            let thrown: unknown;
+            try {
+              await resolvePlugins(params.config, { quiet: true });
+            } catch (error) {
+              thrown = error;
+            }
+            expect(thrown).toBeInstanceOf(ElizaError);
+            const admissionError = thrown as ElizaError;
+            expect(admissionError.code).toBe("SYNTHETIC_ADMISSION_DENIED");
+            const context = admissionError.context as {
+              denials: Array<{ packageName: string; provenance: string }>;
+            };
+            expect(context.denials).toContainEqual({
+              packageName: params.packageName,
+              provenance: params.expectedProvenance,
+            });
+            expect(existsSync(params.markerPath)).toBe(false);
+
+            const ledger = JSON.parse(
+              readFileSync(
+                path.join(params.stateDir, "synthetic-admission-denials.json"),
+                "utf8",
+              ),
+            ) as {
+              denials: Array<{ packageName: string; provenance: string }>;
+            };
+            expect(ledger.denials).toContainEqual({
+              packageName: params.packageName,
+              provenance: params.expectedProvenance,
+            });
+          }
+
+          describe("filesystem-discovered plugins pass through final synthetic admission", () => {
+            it.each([
+              {
+                label: "ejected directory",
+                packageName: "@synthetic-test/plugin-ejected",
+                expectedProvenance: "ejected plugins dir",
+                source: "ejected" as const,
+              },
+              {
+                label: "custom directory",
+                packageName: "@synthetic-test/plugin-custom",
+                expectedProvenance: "plugins/custom",
+                source: "custom" as const,
+              },
+              {
+                label: "configured load path",
+                packageName: "@synthetic-test/plugin-load-path",
+                expectedProvenance: "plugins.load.paths[0]",
+                source: "load-path" as const,
+              },
+            ])(
+              "denies an undeclared plugin from the $label before import",
+              async ({ packageName, expectedProvenance, source }) => {
+                const stateDir = makeTempDir("synthetic-filesystem-state-");
+                const externalDir = makeTempDir("synthetic-filesystem-external-");
+                const markerPath = path.join(stateDir, `${source}-imported`);
+                process.env.ELIZA_STATE_DIR = stateDir;
+                process.env.ELIZA_SYNTHETIC_MODE = "1";
+                process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES = "1";
+
+                const config = {
+                  plugins: {
+                    entries: { "personal-assistant": { enabled: true } },
+                    ...(source === "load-path"
+                      ? { load: { paths: [externalDir] } }
+                      : {}),
+                  },
+                } as unknown as ElizaConfig;
+                await allowCurrentResolverBaseline(config);
+
+                const parentDir =
+                  source === "ejected"
+                    ? path.join(stateDir, "plugins/ejected")
+                    : source === "custom"
+                      ? path.join(stateDir, "plugins/custom")
+                      : externalDir;
+                writeFilesystemPlugin({ parentDir, packageName, markerPath });
+
+                await expectFilesystemPluginDenied({
+                  config,
+                  packageName,
+                  markerPath,
+                  expectedProvenance,
+                  stateDir,
+                });
+              },
+            );
+
+            it("imports a filesystem plugin only when the composition declares it", async () => {
+              const stateDir = makeTempDir("synthetic-filesystem-allow-state-");
+              const markerPath = path.join(stateDir, "allowlisted-imported");
+              const packageName = "@synthetic-test/plugin-allowlisted";
+              process.env.ELIZA_STATE_DIR = stateDir;
+              process.env.ELIZA_SYNTHETIC_MODE = "1";
+              process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES = "1";
+
+              const config = {
+                plugins: {
+                  entries: { "personal-assistant": { enabled: true } },
+                },
+              } as unknown as ElizaConfig;
+              await allowCurrentResolverBaseline(config);
+              writeFilesystemPlugin({
+                parentDir: path.join(stateDir, "plugins/custom"),
+                packageName,
+                markerPath,
+              });
+              process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST = [
+                process.env.ELIZA_SYNTHETIC_PLUGIN_ALLOWLIST,
+                packageName,
+              ]
+                .filter(Boolean)
+                .join(",");
+
+              const resolved = await resolvePlugins(config, { quiet: true });
+              expect(resolved.some((plugin) => plugin.name === packageName)).toBe(
+                true,
+              );
+              expect(readFileSync(markerPath, "utf8")).toBe("imported\n");
+            });
+          });
+          '''
+          test = `${test.rstrip()}${append}\n`
+          test_path.write_text(test)
+          PY
+
+          git diff --check
+          git rm .github/workflows/repair-pr-29308.yml
+          git config user.name "rndrntwrk review repair"
+          git config user.email "180591682+rndrntwrk@users.noreply.github.com"
+          git add packages/agent/src/runtime/plugin-resolver.ts packages/agent/src/runtime/synthetic-admission.test.ts
+          git commit -m "fix(agent): admit filesystem plugins through final synthetic gate"
+          git push origin HEAD:fix/pr-29308-filesystem-synthetic-admission

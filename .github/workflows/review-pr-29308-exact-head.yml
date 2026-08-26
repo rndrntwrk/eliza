@@ -1,0 +1,114 @@
+name: Review PR 29308 exact head
+
+on:
+  push:
+    branches:
+      - review/pr-29308-exact-head-08749d97
+
+concurrency:
+  group: review-pr-29308-exact-head
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+jobs:
+  exact-head-review:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact review head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: review/pr-29308-exact-head-08749d97
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run submitted and adversarial admission suites
+        shell: bash
+        run: >-
+          bunx vitest run
+          --config packages/agent/vitest.config.ts
+          packages/agent/src/runtime/synthetic-admission.test.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.review.test.ts
+          --coverage.enabled=false
+
+      - name: Check reviewed and adversarial files with Biome
+        shell: bash
+        run: >-
+          bunx @biomejs/biome check
+          packages/agent/src/runtime/plugin-resolver.ts
+          packages/agent/src/runtime/synthetic-admission.ts
+          packages/agent/src/runtime/synthetic-admission.test.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.review.test.ts
+
+      - name: Typecheck agent package
+        shell: bash
+        run: bun run --cwd packages/agent typecheck
+
+      - name: Check review patch integrity
+        shell: bash
+        run: git diff --check 08749d97b7142785feda0b63052bbdbda720940c...HEAD
+
+      - name: Reintroduce the reviewed ordering bug and kill it
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp packages/agent/src/runtime/plugin-resolver.ts "$RUNNER_TEMP/plugin-resolver.ts"
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/agent/src/runtime/plugin-resolver.ts")
+          source = path.read_text()
+          start_marker = "  // Synthetic/scenario execution is deny-by-default (#24394): only the\n"
+          start = source.index(start_marker)
+          end = source.index('\n\n  if (phase !== "all") {', start)
+          block = source[start:end]
+          without = source[:start] + source[end:]
+          insertion = without.index(
+              "  // Build a mutable map of install records so we can merge drop-in discoveries\n"
+          )
+          path.write_text(without[:insertion] + block + "\n\n" + without[insertion:])
+          PY
+
+          set +e
+          bunx vitest run \
+            --config packages/agent/vitest.config.ts \
+            packages/agent/src/runtime/synthetic-filesystem-admission.review.test.ts \
+            --coverage.enabled=false 2>&1 | tee "$RUNNER_TEMP/ordering-mutation.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Ordering mutation survived: filesystem packages bypassed the moved admission gate without failing the adversarial suite."
+            exit 1
+          fi
+          grep -q "denies an undeclared executable package" "$RUNNER_TEMP/ordering-mutation.log"
+          cp "$RUNNER_TEMP/plugin-resolver.ts" packages/agent/src/runtime/plugin-resolver.ts
+
+      - name: Re-run adversarial suite after restoring exact-head source
+        shell: bash
+        run: >-
+          bunx vitest run
+          --config packages/agent/vitest.config.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.review.test.ts
+          --coverage.enabled=false

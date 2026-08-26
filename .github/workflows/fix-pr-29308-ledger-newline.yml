@@ -1,0 +1,47 @@
+name: Fix PR 29308 ledger newline literal
+
+on:
+  push:
+    branches:
+      - fix/pr-29308-filesystem-synthetic-admission
+
+permissions:
+  contents: write
+
+jobs:
+  fix-literal:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/pr-29308-filesystem-synthetic-admission
+          fetch-depth: 1
+          persist-credentials: true
+          submodules: false
+
+      - name: Restore the exact newline escape
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/agent/src/runtime/plugin-resolver.ts")
+          source = path.read_text()
+          bad = '        )}\n  `,\n        "utf8",'
+          good = '        )}\\n`,\n        "utf8",'
+          if source.count(bad) != 1:
+              raise SystemExit("expected the malformed ledger newline literal exactly once")
+          path.write_text(source.replace(bad, good, 1))
+          PY
+
+          git diff --check
+          git rm .github/workflows/fix-pr-29308-ledger-newline.yml
+          git config user.name "rndrntwrk review repair"
+          git config user.email "180591682+rndrntwrk@users.noreply.github.com"
+          git add packages/agent/src/runtime/plugin-resolver.ts
+          git commit -m "fix(agent): preserve denial ledger newline"
+          git push origin HEAD:fix/pr-29308-filesystem-synthetic-admission

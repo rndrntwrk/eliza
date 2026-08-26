@@ -2457,51 +2457,55 @@ export async function resolvePlugins(
     }
   }
   // Synthetic/scenario execution is deny-by-default (#24394): only the
-// composition-declared allowlist and the minimal boot-required set may
-// proceed. The first pass covers collector and app-manifest sources before
-// the deny sweep; the second pass below covers filesystem discovery before
-// phase filtering or import. Denials are persisted as a bounded ledger and
-// fail the boot.
-const syntheticPolicy = readSyntheticAdmissionPolicy();
-const enforceSyntheticAdmission = async (): Promise<void> => {
-  if (!syntheticPolicy.active) return;
-  const admission = applySyntheticAdmission(
-    pluginsToLoad,
-    loadReasons,
-    syntheticPolicy,
-  );
-  if (admission.denials.length === 0 && admission.overflowDenialCount === 0) {
-    return;
-  }
-  const ledgerPath = path.join(
-    resolveStateDir(),
-    "synthetic-admission-denials.json",
-  );
-  try {
-    await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
-    await fs.writeFile(
-      ledgerPath,
-      `${JSON.stringify(
-        {
-          deniedAt: new Date().toISOString(),
-          denials: admission.denials,
-          overflowDenialCount: admission.overflowDenialCount,
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
+  // composition-declared allowlist and the minimal boot-required set may
+  // proceed. The first pass covers collector and app-manifest sources before
+  // the deny sweep; the second pass below covers filesystem discovery before
+  // phase filtering or import. Denials are persisted as a bounded ledger and
+  // fail the boot.
+  const syntheticPolicy = readSyntheticAdmissionPolicy();
+  const enforceSyntheticAdmission = async (): Promise<void> => {
+    if (!syntheticPolicy.active) return;
+    const admission = applySyntheticAdmission(
+      pluginsToLoad,
+      loadReasons,
+      syntheticPolicy,
     );
-  } catch (ledgerError) {
-    // error-policy:J6 the ledger file is retention for CI; the denial
-    // itself still fails the boot below with the same ledger in context.
-    logger.warn(
-      `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+    if (
+      admission.denials.length === 0 &&
+      admission.overflowDenialCount === 0
+    ) {
+      return;
+    }
+    const ledgerPath = path.join(
+      resolveStateDir(),
+      "synthetic-admission-denials.json",
     );
-  }
-  assertSyntheticAdmission(admission);
-};
-await enforceSyntheticAdmission();
+    try {
+      await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
+      await fs.writeFile(
+        ledgerPath,
+        `${JSON.stringify(
+          {
+            deniedAt: new Date().toISOString(),
+            denials: admission.denials,
+            overflowDenialCount: admission.overflowDenialCount,
+          },
+          null,
+          2,
+        )}
+  `,
+        "utf8",
+      );
+    } catch (ledgerError) {
+      // error-policy:J6 the ledger file is retention for CI; the denial
+      // itself still fails the boot below with the same ledger in context.
+      logger.warn(
+        `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+      );
+    }
+    assertSyntheticAdmission(admission);
+  };
+  await enforceSyntheticAdmission();
 
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
@@ -2571,29 +2575,31 @@ await enforceSyntheticAdmission();
   // ── Auto-discover drop-in custom plugins ────────────────────────────────
   // Scan well-known dir + any extra dirs from plugins.load.paths (first wins).
   const scanDirs: Array<{ dir: string; provenance: string }> = mobilePlatform
-  ? []
-  : [
-      {
-        dir: path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
-        provenance: "plugins/custom",
-      },
-      ...(config.plugins?.load?.paths ?? []).map(
-        (configuredPath, index) => ({
-          dir: resolveUserPath(configuredPath),
-          provenance: `plugins.load.paths[${index}]`,
-        }),
-      ),
-    ];
-const dropInRecords: Record<string, PluginInstallRecord> = {};
-const dropInLoadReasons = new Map<string, string>();
-for (const { dir, provenance } of scanDirs) {
-  for (const [name, record] of Object.entries(await scanDropInPlugins(dir))) {
-    if (!dropInRecords[name]) {
-      dropInRecords[name] = record;
-      dropInLoadReasons.set(name, provenance);
+    ? []
+    : [
+        {
+          dir: path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
+          provenance: "plugins/custom",
+        },
+        ...(config.plugins?.load?.paths ?? []).map(
+          (configuredPath, index) => ({
+            dir: resolveUserPath(configuredPath),
+            provenance: `plugins.load.paths[${index}]`,
+          }),
+        ),
+      ];
+  const dropInRecords: Record<string, PluginInstallRecord> = {};
+  const dropInLoadReasons = new Map<string, string>();
+  for (const { dir, provenance } of scanDirs) {
+    for (const [name, record] of Object.entries(
+      await scanDropInPlugins(dir),
+    )) {
+      if (!dropInRecords[name]) {
+        dropInRecords[name] = record;
+        dropInLoadReasons.set(name, provenance);
+      }
     }
   }
-}
 
   // Merge into load set — deny list and core collisions are filtered out.
   const { accepted: customPluginNames, skipped } = mergeDropInPlugins({
@@ -2605,13 +2611,13 @@ for (const { dir, provenance } of scanDirs) {
   });
 
   for (const pluginName of customPluginNames) {
-  if (!loadReasons.has(pluginName)) {
-    loadReasons.set(
-      pluginName,
-      dropInLoadReasons.get(pluginName) ?? "custom plugins dir",
-    );
+    if (!loadReasons.has(pluginName)) {
+      loadReasons.set(
+        pluginName,
+        dropInLoadReasons.get(pluginName) ?? "custom plugins dir",
+      );
+    }
   }
-}
 
   for (const msg of skipped) logger.warn(msg);
   if (customPluginNames.length > 0) {
@@ -2620,10 +2626,10 @@ for (const { dir, provenance } of scanDirs) {
     );
   }
 
-// Ejected and custom packages are discovered after the collector pass.
-// Enforce the same policy on the completed load set before any phase can
-// select or import those filesystem-backed capabilities.
-await enforceSyntheticAdmission();
+  // Ejected and custom packages are discovered after the collector pass.
+  // Enforce the same policy on the completed load set before any phase can
+  // select or import those filesystem-backed capabilities.
+  await enforceSyntheticAdmission();
 
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;

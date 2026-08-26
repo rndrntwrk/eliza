@@ -89,7 +89,9 @@ jobs:
 
       - name: Check review patch integrity
         shell: bash
-        run: git diff --check 08749d97b7142785feda0b63052bbdbda720940c...HEAD
+        run: |
+          git fetch --no-tags --depth=1 origin 08749d97b7142785feda0b63052bbdbda720940c
+          git diff --check 08749d97b7142785feda0b63052bbdbda720940c HEAD
 
       - name: Reintroduce the reviewed ordering bug and kill it
         shell: bash

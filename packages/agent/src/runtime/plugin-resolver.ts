@@ -2492,8 +2492,7 @@ export async function resolvePlugins(
           },
           null,
           2,
-        )}
-  `,
+        )}\n`,
         "utf8",
       );
     } catch (ledgerError) {

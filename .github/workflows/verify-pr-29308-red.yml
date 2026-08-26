@@ -5,6 +5,10 @@ on:
     branches:
       - fix/pr-29308-filesystem-synthetic-admission
 
+concurrency:
+  group: pr-29308-filesystem-admission-red
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -25,7 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: fix/pr-29308-filesystem-synthetic-admission
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
           submodules: false
 

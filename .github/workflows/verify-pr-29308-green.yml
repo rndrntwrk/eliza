@@ -1,0 +1,109 @@
+name: Verify PR 29308 filesystem-admission repair
+
+on:
+  push:
+    branches:
+      - fix/pr-29308-filesystem-synthetic-admission
+
+concurrency:
+  group: pr-29308-filesystem-admission-green
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+jobs:
+  verify-repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact repair head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/pr-29308-filesystem-synthetic-admission
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run focused synthetic-admission suites
+        shell: bash
+        run: >-
+          bunx vitest run
+          --config packages/agent/vitest.config.ts
+          packages/agent/src/runtime/synthetic-admission.test.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.test.ts
+          --coverage.enabled=false
+
+      - name: Check changed TypeScript with Biome
+        shell: bash
+        run: >-
+          bunx @biomejs/biome check
+          packages/agent/src/runtime/plugin-resolver.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.test.ts
+
+      - name: Typecheck agent package
+        shell: bash
+        run: bun run --cwd packages/agent typecheck
+
+      - name: Check patch integrity
+        shell: bash
+        run: git diff --check 123834b35075ae74e911ddb94dde9b3ec330b68b...HEAD
+
+      - name: Kill the repair by removing the final admission pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp packages/agent/src/runtime/plugin-resolver.ts "$RUNNER_TEMP/plugin-resolver.ts"
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/agent/src/runtime/plugin-resolver.ts")
+          source = path.read_text()
+          needle = "\n  await enforceSyntheticAdmission();"
+          index = source.rfind(needle)
+          if index < 0:
+              raise SystemExit("final synthetic admission pass not found")
+          path.write_text(source[:index] + source[index + len(needle):])
+          PY
+
+          set +e
+          bunx vitest run \
+            --config packages/agent/vitest.config.ts \
+            packages/agent/src/runtime/synthetic-filesystem-admission.test.ts \
+            --coverage.enabled=false 2>&1 | tee "$RUNNER_TEMP/mutation.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Mutation survived: filesystem regressions stayed green without the final admission pass."
+            exit 1
+          fi
+          grep -q "denies an undeclared plugin" "$RUNNER_TEMP/mutation.log"
+          cp "$RUNNER_TEMP/plugin-resolver.ts" packages/agent/src/runtime/plugin-resolver.ts
+
+      - name: Re-run focused suites after restoring production source
+        shell: bash
+        run: >-
+          bunx vitest run
+          --config packages/agent/vitest.config.ts
+          packages/agent/src/runtime/synthetic-admission.test.ts
+          packages/agent/src/runtime/synthetic-filesystem-admission.test.ts
+          --coverage.enabled=false

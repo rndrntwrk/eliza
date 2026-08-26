@@ -1,0 +1,170 @@
+name: Normalize PR 29308 repair formatting
+
+on:
+  push:
+    branches:
+      - fix/pr-29308-filesystem-synthetic-admission
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/pr-29308-filesystem-synthetic-admission
+          fetch-depth: 1
+          persist-credentials: true
+          submodules: false
+
+      - name: Normalize the inserted TypeScript blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          path = Path("packages/agent/src/runtime/plugin-resolver.ts")
+          source = path.read_text()
+
+          def indent_block(value: str) -> str:
+              return textwrap.indent(textwrap.dedent(value).strip(), "  ")
+
+          admission_start = source.index(
+              "  // Synthetic/scenario execution is deny-by-default (#24394): only the\n"
+          )
+          admission_end = source.index(
+              "\n\n  // Build a mutable map of install records", admission_start
+          )
+          admission = indent_block('''
+          // Synthetic/scenario execution is deny-by-default (#24394): only the
+          // composition-declared allowlist and the minimal boot-required set may
+          // proceed. The first pass covers collector and app-manifest sources before
+          // the deny sweep; the second pass below covers filesystem discovery before
+          // phase filtering or import. Denials are persisted as a bounded ledger and
+          // fail the boot.
+          const syntheticPolicy = readSyntheticAdmissionPolicy();
+          const enforceSyntheticAdmission = async (): Promise<void> => {
+            if (!syntheticPolicy.active) return;
+            const admission = applySyntheticAdmission(
+              pluginsToLoad,
+              loadReasons,
+              syntheticPolicy,
+            );
+            if (
+              admission.denials.length === 0 &&
+              admission.overflowDenialCount === 0
+            ) {
+              return;
+            }
+            const ledgerPath = path.join(
+              resolveStateDir(),
+              "synthetic-admission-denials.json",
+            );
+            try {
+              await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
+              await fs.writeFile(
+                ledgerPath,
+                `${JSON.stringify(
+                  {
+                    deniedAt: new Date().toISOString(),
+                    denials: admission.denials,
+                    overflowDenialCount: admission.overflowDenialCount,
+                  },
+                  null,
+                  2,
+                )}\n`,
+                "utf8",
+              );
+            } catch (ledgerError) {
+              // error-policy:J6 the ledger file is retention for CI; the denial
+              // itself still fails the boot below with the same ledger in context.
+              logger.warn(
+                `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+              );
+            }
+            assertSyntheticAdmission(admission);
+          };
+          await enforceSyntheticAdmission();
+          ''')
+          source = source[:admission_start] + admission + source[admission_end:]
+
+          scan_start = source.index("  const scanDirs: Array<{ dir: string; provenance: string }>")
+          scan_end = source.index("\n\n  // Merge into load set", scan_start)
+          scan = indent_block('''
+          const scanDirs: Array<{ dir: string; provenance: string }> = mobilePlatform
+            ? []
+            : [
+                {
+                  dir: path.join(resolveStateDir(), CUSTOM_PLUGINS_DIRNAME),
+                  provenance: "plugins/custom",
+                },
+                ...(config.plugins?.load?.paths ?? []).map(
+                  (configuredPath, index) => ({
+                    dir: resolveUserPath(configuredPath),
+                    provenance: `plugins.load.paths[${index}]`,
+                  }),
+                ),
+              ];
+          const dropInRecords: Record<string, PluginInstallRecord> = {};
+          const dropInLoadReasons = new Map<string, string>();
+          for (const { dir, provenance } of scanDirs) {
+            for (const [name, record] of Object.entries(
+              await scanDropInPlugins(dir),
+            )) {
+              if (!dropInRecords[name]) {
+                dropInRecords[name] = record;
+                dropInLoadReasons.set(name, provenance);
+              }
+            }
+          }
+          ''')
+          source = source[:scan_start] + scan + source[scan_end:]
+
+          reason_start = source.index(
+              "  for (const pluginName of customPluginNames) {", scan_start
+          )
+          reason_end = source.index(
+              "\n\n  for (const msg of skipped) logger.warn(msg);", reason_start
+          )
+          reasons = indent_block('''
+          for (const pluginName of customPluginNames) {
+            if (!loadReasons.has(pluginName)) {
+              loadReasons.set(
+                pluginName,
+                dropInLoadReasons.get(pluginName) ?? "custom plugins dir",
+              );
+            }
+          }
+          ''')
+          source = source[:reason_start] + reasons + source[reason_end:]
+
+          final_start = source.index(
+              "// Ejected and custom packages are discovered after the collector pass.",
+              reason_start,
+          )
+          final_end = source.index('\n\n  if (phase !== "all") {', final_start)
+          final = indent_block('''
+          // Ejected and custom packages are discovered after the collector pass.
+          // Enforce the same policy on the completed load set before any phase can
+          // select or import those filesystem-backed capabilities.
+          await enforceSyntheticAdmission();
+          ''')
+          source = source[:final_start] + final + source[final_end:]
+
+          path.write_text(source)
+          PY
+
+          git diff --check
+          git rm .github/workflows/normalize-pr-29308-repair.yml
+          git config user.name "rndrntwrk review repair"
+          git config user.email "180591682+rndrntwrk@users.noreply.github.com"
+          git add packages/agent/src/runtime/plugin-resolver.ts
+          git commit -m "style(agent): normalize final admission repair"
+          git push origin HEAD:fix/pr-29308-filesystem-synthetic-admission

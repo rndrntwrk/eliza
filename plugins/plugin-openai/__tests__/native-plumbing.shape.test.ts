@@ -57,7 +57,17 @@ beforeEach(() => {
 vi.mock("ai", () => ({
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
-  jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
+  // Match the real AI SDK schema wrapper: `jsonSchema` is an own enumerable
+  // getter and the schema marker is an own symbol. A plain data-property mock
+  // hides ordering bugs where provider-bound sanitization runs after wrapping.
+  jsonSchema: (schema: unknown) => ({
+    [Symbol.for("vercel.ai.schema")]: true,
+    _type: undefined,
+    get jsonSchema() {
+      return schema;
+    },
+    validate: undefined,
+  }),
   Output: {
     object: ({
       schema,

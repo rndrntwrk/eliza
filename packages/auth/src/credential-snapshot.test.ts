@@ -119,7 +119,9 @@ describe("credential snapshots", () => {
     );
 
     const tampered = structuredClone(snapshot);
-    tampered.files[1]!.bytesBase64 = Buffer.from("tampered").toString("base64");
+    const sameLengthBytes = Buffer.from(tampered.files[1]!.bytesBase64, "base64");
+    sameLengthBytes[0] = sameLengthBytes[0]! ^ 1;
+    tampered.files[1]!.bytesBase64 = sameLengthBytes.toString("base64");
     expect(() => validateCredentialSnapshot(tampered)).toThrow(
       expect.objectContaining({
         code: "AUTH_CREDENTIAL_SNAPSHOT_FILE_DIGEST_INVALID",

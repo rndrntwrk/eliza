@@ -18,7 +18,8 @@ export type CredentialDurabilityReason =
   | "codex-rotation";
 
 export interface CredentialDurabilityReceipt {
-  generation: number;
+  /** Host-owned compare-and-swap revision, independent of Eliza's reset fence. */
+  durabilityGeneration: number;
   snapshotSha256: `sha256:${string}`;
 }
 

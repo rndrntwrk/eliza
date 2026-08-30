@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  type CredentialDurabilityBridge,
   commitDurableCredentials,
   hydrateDurableCredentials,
   installCredentialDurabilityBridge,
-  type CredentialDurabilityBridge,
 } from "./credential-durability.ts";
 
 function deferred<T>() {
@@ -46,7 +46,7 @@ describe("credential durability bridge", () => {
 
   it("does not resolve a commit until the installed bridge resolves", async () => {
     const pending = deferred<{
-      generation: number;
+      durabilityGeneration: number;
       snapshotSha256: `sha256:${string}`;
     }>();
     const installed = bridge({
@@ -70,12 +70,12 @@ describe("credential durability bridge", () => {
     });
 
     pending.resolve({
-      generation: 7,
+      durabilityGeneration: 7,
       snapshotSha256: `sha256:${"a".repeat(64)}`,
     });
 
     await expect(resultPromise).resolves.toEqual({
-      generation: 7,
+      durabilityGeneration: 7,
       snapshotSha256: `sha256:${"a".repeat(64)}`,
     });
   });

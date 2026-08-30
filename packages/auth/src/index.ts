@@ -1,6 +1,7 @@
 export * from "./account-storage.ts";
 export * from "./anthropic.ts";
 export * from "./codex-device.ts";
+export * from "./credential-durability.ts";
 export * from "./credentials.ts";
 export * from "./oauth-flow.ts";
 export * from "./openai-codex.ts";

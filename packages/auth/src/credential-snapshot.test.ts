@@ -49,7 +49,6 @@ describe("credential snapshots", () => {
     const codexHome = path.join(
       sourceRoot,
       "auth",
-      "openai-codex",
       "_codex-home",
       "alice-primary",
     );

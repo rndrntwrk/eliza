@@ -67,7 +67,8 @@ describe("credential snapshots", () => {
 
     expect(snapshot.schemaVersion).toBe("eliza.credential-snapshot.v1");
     expect(snapshot.providerId).toBe("openai-codex");
-    expect(snapshot.generation).toBeGreaterThan(0);
+    // This is Eliza's reset fence, not the remote durability CAS revision.
+    expect(snapshot.storageGeneration).toBe(0);
     expect(snapshot.files.map((file) => file.relativePath)).toEqual([
       "auth/.credential-storage-generation",
       "auth/openai-codex/alice-primary.json",
@@ -171,7 +172,7 @@ describe("credential snapshots", () => {
     });
 
     expect(receipt).toEqual({
-      generation: snapshot.generation,
+      storageGeneration: snapshot.storageGeneration,
       snapshotSha256: snapshot.snapshotSha256,
     });
     expect(fs.existsSync(path.join(targetProvider, "stale.json"))).toBe(false);
@@ -183,6 +184,6 @@ describe("credential snapshots", () => {
         path.join(targetRoot, "auth", ".credential-storage-generation"),
         "utf8",
       ),
-    ).toBe(`${snapshot.generation}\n`);
+    ).toBe(`${snapshot.storageGeneration}\n`);
   });
 });

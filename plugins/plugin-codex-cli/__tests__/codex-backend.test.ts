@@ -4,6 +4,9 @@
  * driven by a fake fetch (no live model or network).
  */
 import { ElizaError } from "@elizaos/core";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
 import {
@@ -11,6 +14,8 @@ import {
   __setCodexAuthDeps,
   type CodexAuth,
   isExpired,
+  saveCodexAuth,
+  setCodexAuthPersistHook,
 } from "../src/codex-auth";
 import { CodexBackend, translateMessagesToCodexInput } from "../src/codex-backend";
 import { CODEX_JSON_UNBOUNDED } from "../src/codex-json-value";
@@ -64,7 +69,10 @@ describe("codex plugin metadata", () => {
 });
 
 describe("codex auth helpers", () => {
-  afterEach(() => __resetCodexAuthDeps());
+  afterEach(() => {
+    __resetCodexAuthDeps();
+    setCodexAuthPersistHook(undefined);
+  });
 
   it("detects expired JWT access tokens with a buffer", () => {
     __setCodexAuthDeps({ now: () => 1_000_000 });
@@ -74,6 +82,20 @@ describe("codex auth helpers", () => {
     expect(
       isExpired({ ...auth, tokens: { ...auth.tokens, access_token: jwtWithExp(2_000) } })
     ).toBe(false);
+  });
+
+  it("persists refreshed account auth through the installed runtime hook", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-auth-"));
+    const observed: CodexAuth[] = [];
+    setCodexAuthPersistHook(async (value) => {
+      observed.push(value);
+    });
+    try {
+      await saveCodexAuth(auth, join(dir, "auth.json"));
+      expect(observed).toEqual([auth]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

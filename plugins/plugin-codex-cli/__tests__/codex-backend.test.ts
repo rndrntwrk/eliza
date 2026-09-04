@@ -42,13 +42,22 @@ const auth: CodexAuth = {
 };
 
 describe("codex plugin metadata", () => {
-  it("declares CODEX_MODEL as display metadata for every model handler", () => {
+  it("declares the matching tier setting as display metadata for every model handler", () => {
+    const expectedSettings: Record<string, string> = {
+      ACTION_PLANNER: "ELIZA_CODEX_MODEL_POWERFUL",
+      RESPONSE_HANDLER: "ELIZA_CODEX_MODEL_FAST",
+      TEXT_LARGE: "ELIZA_CODEX_MODEL_POWERFUL",
+      TEXT_MEDIUM: "ELIZA_CODEX_MODEL_FAST",
+      TEXT_MEGA: "ELIZA_CODEX_MODEL_POWERFUL",
+      TEXT_NANO: "ELIZA_CODEX_MODEL_FAST",
+      TEXT_SMALL: "ELIZA_CODEX_MODEL_FAST",
+    };
     const modelTypes = Object.keys(codexCliPlugin.models ?? {});
     expect(modelTypes.length).toBeGreaterThan(0);
     expect(Object.keys(codexCliPlugin.modelMetadata ?? {}).sort()).toEqual(modelTypes.sort());
     for (const modelType of modelTypes) {
       expect(codexCliPlugin.modelMetadata?.[modelType]).toEqual({
-        displayModelSetting: "CODEX_MODEL",
+        displayModelSetting: expectedSettings[modelType],
       });
     }
   });
@@ -132,6 +141,32 @@ describe("tool translation", () => {
 });
 
 describe("CodexBackend", () => {
+  it("uses the existing model tiers for everyday and complex work at max effort", () => {
+    const runtime = {
+      getSetting(key: string) {
+        if (key === "ELIZA_CODEX_MODEL_FAST") return "gpt-5.6-luna";
+        if (key === "ELIZA_CODEX_MODEL_POWERFUL") return "gpt-5.6-sol";
+        if (key === "CODEX_REASONING_EFFORT") return "max";
+        return undefined;
+      },
+    };
+
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "everyday" },
+        "TEXT_SMALL"
+      )
+    ).toMatchObject({ model: "gpt-5.6-luna", reasoningEffort: "max" });
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "complex" },
+        "ACTION_PLANNER"
+      )
+    ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "max" });
+  });
+
   it("honors a per-call model override before Codex slot defaults", () => {
     const runtime = {
       getSetting(key: string) {
@@ -259,6 +294,7 @@ describe("CodexBackend", () => {
       prompt: "hello",
       tools: [{ name: "lookup", parameters: { type: "object" } }],
       toolChoice: { name: "lookup" },
+      reasoningEffort: "max",
     });
 
     expect(result).toEqual({
@@ -272,6 +308,7 @@ describe("CodexBackend", () => {
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
       tools: [{ type: "function", name: "lookup" }],
       tool_choice: { type: "function", name: "lookup" },
+      reasoning: { effort: "max" },
     });
   });
 

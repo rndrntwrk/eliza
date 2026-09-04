@@ -24,6 +24,38 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
 const CODEX_MODEL_SETTING = "CODEX_MODEL";
+const CODEX_REASONING_EFFORT_SETTING = "CODEX_REASONING_EFFORT";
+const CODEX_FAST_MODEL_SETTING = "CODEX_CLI_SMALL_MODEL";
+const CODEX_POWERFUL_MODEL_SETTING = "CODEX_CLI_LARGE_MODEL";
+
+const CODEX_MODEL_SETTING_BY_TYPE: Readonly<Record<string, string>> = {
+  [TEXT_NANO_MODEL_TYPE]: CODEX_FAST_MODEL_SETTING,
+  [ModelType.TEXT_SMALL]: CODEX_FAST_MODEL_SETTING,
+  [TEXT_MEDIUM_MODEL_TYPE]: CODEX_POWERFUL_MODEL_SETTING,
+  [ModelType.TEXT_LARGE]: CODEX_POWERFUL_MODEL_SETTING,
+  [TEXT_MEGA_MODEL_TYPE]: CODEX_POWERFUL_MODEL_SETTING,
+  [RESPONSE_HANDLER_MODEL_TYPE]: CODEX_FAST_MODEL_SETTING,
+  [ACTION_PLANNER_MODEL_TYPE]: CODEX_POWERFUL_MODEL_SETTING,
+};
+
+const DEFAULT_CODEX_MODEL_BY_TYPE: Readonly<Record<string, string>> = {
+  [TEXT_NANO_MODEL_TYPE]: "gpt-5.6-luna",
+  [ModelType.TEXT_SMALL]: "gpt-5.6-luna",
+  [TEXT_MEDIUM_MODEL_TYPE]: "gpt-5.6-sol",
+  [ModelType.TEXT_LARGE]: "gpt-5.6-sol",
+  [TEXT_MEGA_MODEL_TYPE]: "gpt-5.6-sol",
+  [RESPONSE_HANDLER_MODEL_TYPE]: "gpt-5.6-luna",
+  [ACTION_PLANNER_MODEL_TYPE]: "gpt-5.6-sol",
+};
+
+const CODEX_REASONING_EFFORTS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
 
 const CODEX_SUPPORTED_MODELS = [
   "gpt-5",
@@ -31,6 +63,8 @@ const CODEX_SUPPORTED_MODELS = [
   "gpt-5.4",
   "gpt-5.5",
   "gpt-5.5-pro",
+  "gpt-5.6-luna",
+  "gpt-5.6-sol",
 ] as const;
 
 type RuntimeWithSettings = IAgentRuntime & {
@@ -54,15 +88,32 @@ function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return value === undefined || value === null ? readEnv(key) : String(value);
 }
 
-function getCodexModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, CODEX_MODEL_SETTING) ?? "gpt-5.5";
+function getCodexModel(runtime: IAgentRuntime, modelType: string): string {
+  const tierSetting = CODEX_MODEL_SETTING_BY_TYPE[modelType];
+  return (
+    (tierSetting ? getSetting(runtime, tierSetting) : undefined) ??
+    getSetting(runtime, CODEX_MODEL_SETTING) ??
+    DEFAULT_CODEX_MODEL_BY_TYPE[modelType] ??
+    "gpt-5.6-luna"
+  );
 }
 
-function getRequestedCodexModel(runtime: IAgentRuntime, params: GenerateTextParams): string {
+function getRequestedCodexModel(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: string
+): string {
   const requestedModel = (params as GenerateTextParams & { model?: unknown }).model;
   return typeof requestedModel === "string" && requestedModel.trim().length > 0
     ? requestedModel.trim()
-    : getCodexModel(runtime);
+    : getCodexModel(runtime, modelType);
+}
+
+function getCodexReasoningEffort(runtime: IAgentRuntime): CodexGenerateParams["reasoningEffort"] {
+  const value = getSetting(runtime, CODEX_REASONING_EFFORT_SETTING)?.trim().toLowerCase();
+  return value && CODEX_REASONING_EFFORTS.has(value)
+    ? (value as NonNullable<CodexGenerateParams["reasoningEffort"]>)
+    : undefined;
 }
 
 const backendByRuntime = new WeakMap<IAgentRuntime, CodexBackend>();
@@ -76,7 +127,7 @@ function createBackend(runtime: IAgentRuntime): CodexBackend {
   const backend = new CodexBackend({
     authPath: getSetting(runtime, "CODEX_AUTH_PATH"),
     baseUrl: getSetting(runtime, "CODEX_BASE_URL"),
-    model: getCodexModel(runtime),
+    model: getCodexModel(runtime, ModelType.TEXT_SMALL),
     originator: getSetting(runtime, "CODEX_ORIGINATOR"),
     jitterMaxMs: Number.isFinite(jitterMaxMs) ? jitterMaxMs : undefined,
   });
@@ -101,7 +152,8 @@ function toTextReturn(
 
 function buildCodexGenerateParams(
   runtime: IAgentRuntime,
-  params: GenerateTextParams
+  params: GenerateTextParams,
+  modelType: string = ModelType.TEXT_SMALL
 ): CodexGenerateParams {
   // Honor `responseSchema` natively. OpenAI-compatible Codex models accept
   // `response_format: { type: "json_schema", schema }` for guaranteed JSON
@@ -125,14 +177,19 @@ function buildCodexGenerateParams(
     messages: params.messages,
     tools: params.tools,
     toolChoice: params.toolChoice,
-    model: getRequestedCodexModel(runtime, params),
+    model: getRequestedCodexModel(runtime, params, modelType),
+    reasoningEffort: getCodexReasoningEffort(runtime),
     temperature: params.temperature,
     maxTokens: params.maxTokens,
     responseFormat,
   };
 }
 
-function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams): TextStreamResult {
+function streamTextWithCodex(
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+  modelType: string
+): TextStreamResult {
   const queue: string[] = [];
   let notify: (() => void) | undefined;
   let done = false;
@@ -144,7 +201,7 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
 
   const resultPromise = createBackend(runtime)
     .generate({
-      ...buildCodexGenerateParams(runtime, params),
+      ...buildCodexGenerateParams(runtime, params, modelType),
       onTextDelta: (delta) => {
         queue.push(delta);
         wake();
@@ -195,7 +252,7 @@ function streamTextWithCodex(runtime: IAgentRuntime, params: GenerateTextParams)
         : undefined
     ),
     finishReason: resultPromise.then((result) => result.finishReason),
-    providerMetadata: { modelName: getRequestedCodexModel(runtime, params) },
+    providerMetadata: { modelName: getRequestedCodexModel(runtime, params, modelType) },
   };
 }
 
@@ -204,10 +261,12 @@ async function generateTextWithCodex(
   params: GenerateTextParams,
   modelType: string
 ): Promise<string | TextResultWithNativeTools | TextStreamResult> {
-  const model = getRequestedCodexModel(runtime, params);
+  const model = getRequestedCodexModel(runtime, params, modelType);
   logger.debug(`[codex-cli] Using ${modelType} model: ${model}`);
-  if (params.stream) return streamTextWithCodex(runtime, params);
-  const result = await createBackend(runtime).generate(buildCodexGenerateParams(runtime, params));
+  if (params.stream) return streamTextWithCodex(runtime, params, modelType);
+  const result = await createBackend(runtime).generate(
+    buildCodexGenerateParams(runtime, params, modelType)
+  );
   return toTextReturn(params, result);
 }
 
@@ -231,7 +290,7 @@ const codexModels = {
 const codexModelMetadata = Object.fromEntries(
   Object.keys(codexModels ?? {}).map((modelType) => [
     modelType,
-    { displayModelSetting: CODEX_MODEL_SETTING },
+    { displayModelSetting: CODEX_MODEL_SETTING_BY_TYPE[modelType] ?? CODEX_MODEL_SETTING },
   ])
 ) satisfies NonNullable<Plugin["modelMetadata"]>;
 
@@ -258,6 +317,9 @@ export const codexCliPlugin: Plugin = {
     CODEX_AUTH_PATH: readEnv("CODEX_AUTH_PATH") ?? null,
     CODEX_BASE_URL: readEnv("CODEX_BASE_URL") ?? null,
     [CODEX_MODEL_SETTING]: readEnv(CODEX_MODEL_SETTING) ?? null,
+    [CODEX_FAST_MODEL_SETTING]: readEnv(CODEX_FAST_MODEL_SETTING) ?? null,
+    [CODEX_POWERFUL_MODEL_SETTING]: readEnv(CODEX_POWERFUL_MODEL_SETTING) ?? null,
+    [CODEX_REASONING_EFFORT_SETTING]: readEnv(CODEX_REASONING_EFFORT_SETTING) ?? null,
     CODEX_JITTER_MS_MAX: readEnv("CODEX_JITTER_MS_MAX") ?? null,
     CODEX_ORIGINATOR: readEnv("CODEX_ORIGINATOR") ?? null,
   },

@@ -49,13 +49,13 @@ const auth: CodexAuth = {
 describe("codex plugin metadata", () => {
   it("declares the matching tier setting as display metadata for every model handler", () => {
     const expectedSettings: Record<string, string> = {
-      ACTION_PLANNER: "ELIZA_CODEX_MODEL_POWERFUL",
-      RESPONSE_HANDLER: "ELIZA_CODEX_MODEL_FAST",
-      TEXT_LARGE: "ELIZA_CODEX_MODEL_POWERFUL",
-      TEXT_MEDIUM: "ELIZA_CODEX_MODEL_FAST",
-      TEXT_MEGA: "ELIZA_CODEX_MODEL_POWERFUL",
-      TEXT_NANO: "ELIZA_CODEX_MODEL_FAST",
-      TEXT_SMALL: "ELIZA_CODEX_MODEL_FAST",
+      ACTION_PLANNER: "CODEX_CLI_LARGE_MODEL",
+      RESPONSE_HANDLER: "CODEX_CLI_SMALL_MODEL",
+      TEXT_LARGE: "CODEX_CLI_LARGE_MODEL",
+      TEXT_MEDIUM: "CODEX_CLI_LARGE_MODEL",
+      TEXT_MEGA: "CODEX_CLI_LARGE_MODEL",
+      TEXT_NANO: "CODEX_CLI_SMALL_MODEL",
+      TEXT_SMALL: "CODEX_CLI_SMALL_MODEL",
     };
     const modelTypes = Object.keys(codexCliPlugin.models ?? {});
     expect(modelTypes.length).toBeGreaterThan(0);
@@ -166,8 +166,8 @@ describe("CodexBackend", () => {
   it("uses the existing model tiers for everyday and complex work at max effort", () => {
     const runtime = {
       getSetting(key: string) {
-        if (key === "ELIZA_CODEX_MODEL_FAST") return "gpt-5.6-luna";
-        if (key === "ELIZA_CODEX_MODEL_POWERFUL") return "gpt-5.6-sol";
+        if (key === "CODEX_CLI_SMALL_MODEL") return "gpt-5.6-luna";
+        if (key === "CODEX_CLI_LARGE_MODEL") return "gpt-5.6-sol";
         if (key === "CODEX_REASONING_EFFORT") return "max";
         return undefined;
       },
@@ -185,6 +185,13 @@ describe("CodexBackend", () => {
         runtime as never,
         { prompt: "complex" },
         "ACTION_PLANNER"
+      )
+    ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "max" });
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "planning middleground" },
+        "TEXT_MEDIUM"
       )
     ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "max" });
   });

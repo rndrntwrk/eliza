@@ -3,8 +3,9 @@
  *
  * Resolves an app by id or name from the user's text (or planner-supplied
  * options), then formats a detail block. Id-shaped references take the direct
- * `client.getApp(id)` path; names resolve via `client.listApps()` +
- * find-by-name. Read-only: no mutating calls.
+ * `client.getApp(id)` path; stale or foreign ids fall through to the owned-app
+ * list so the user gets the same helpful not-found reply as a name lookup.
+ * Read-only: no mutating calls.
  */
 
 import type {
@@ -33,6 +34,12 @@ const NO_REFERENCE_MESSAGE =
   "Which app would you like to know about? Tell me its name and I'll pull up the details.";
 const ERROR_MESSAGE =
   "I couldn't fetch that app's details right now — the Cloud API returned an error. Try again in a moment.";
+
+function isStaleOrForeignAppError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return statusCode === 403 || statusCode === 404;
+}
 
 function notFoundMessage(reference: string, available: string[]): string {
   const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
@@ -93,7 +100,13 @@ export const getAppAction: Action = {
     try {
       // Id-shaped reference → direct single-app fetch.
       if (looksLikeAppId(reference)) {
-        const { app } = await client.getApp(reference);
+        const response = await client.getApp(reference).catch((err: unknown) => {
+          // error-policy:J4 Only lookup 403/404 failures become inventory fallback;
+          // formatting and delivery failures still belong to the outer boundary.
+          if (!isStaleOrForeignAppError(err)) throw err;
+          return null;
+        });
+        const app = response?.app;
         if (app) {
           const detail = formatAppDetail(app);
           await callback?.({ text: detail, actions: ["GET_APP"] });

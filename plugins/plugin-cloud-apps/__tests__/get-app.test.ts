@@ -21,6 +21,38 @@ mock.module("@elizaos/cloud-sdk", () => ({
 
 const { getAppAction } = await import("../src/actions/get-app.ts");
 
+const STALE_APP_ID = "00000000-0000-4000-8000-000000000099";
+const OWNED_APP = makeApp({
+  id: "00000000-0000-4000-8000-000000000001",
+  name: "Acme Bot",
+  slug: "acme-bot",
+});
+
+async function runIdLookupFailure(statusCode: number) {
+  let listAppsCalls = 0;
+  setGetApp(() =>
+    Promise.reject(
+      Object.assign(new Error(`HTTP ${statusCode}`), { statusCode }),
+    ),
+  );
+  setListApps(() => {
+    listAppsCalls += 1;
+    return Promise.resolve({ success: true, apps: [OWNED_APP] });
+  });
+  const callback = captureCallback();
+  const result = requireDefined(
+    await getAppAction.handler(
+      keyedRuntime(),
+      makeMessage("tell me about that app"),
+      undefined,
+      { appId: STALE_APP_ID },
+      callback.fn,
+    ),
+    "action result",
+  );
+  return { callback, listAppsCalls, result };
+}
+
 describe("GET_APP", () => {
   beforeEach(() => {
     resetSdk();
@@ -126,6 +158,81 @@ describe("GET_APP", () => {
     // The id path must not fall back to listApps.
     expect(listCalled).toBe(false);
   });
+
+  it("falls through to the owned-app list for a stale app id", async () => {
+    const { callback, listAppsCalls, result } = await runIdLookupFailure(404);
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      reason: "not_found",
+      reference: STALE_APP_ID,
+    });
+    expect(result.userFacingText).toContain("Acme Bot");
+    expect(callback.calls).toHaveLength(1);
+    expect(callback.calls[0]?.text).toBe(result.userFacingText);
+    expect(listAppsCalls).toBe(1);
+  });
+
+  it("falls through to the owned-app list for a foreign app id", async () => {
+    const { listAppsCalls, result } = await runIdLookupFailure(403);
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ reason: "not_found" });
+    expect(result.userFacingText).toContain("Acme Bot");
+    expect(listAppsCalls).toBe(1);
+  });
+
+  it("keeps a direct lookup server failure distinct from not-found", async () => {
+    const { listAppsCalls, result } = await runIdLookupFailure(500);
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ reason: "error" });
+    expect(listAppsCalls).toBe(0);
+  });
+
+  it("keeps a direct authentication failure distinct from not-found", async () => {
+    const { listAppsCalls, result } = await runIdLookupFailure(401);
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ reason: "error" });
+    expect(listAppsCalls).toBe(0);
+  });
+
+  for (const statusCode of [403, 404]) {
+    it(`does not treat a delivery ${statusCode} as an app lookup miss`, async () => {
+      let listAppsCalls = 0;
+      let deliveryCalls = 0;
+      setGetApp(() => Promise.resolve({ success: true, app: OWNED_APP }));
+      setListApps(() => {
+        listAppsCalls += 1;
+        return Promise.resolve({ success: true, apps: [] });
+      });
+      const deliveryError = Object.assign(new Error("Delivery failed"), {
+        statusCode,
+      });
+      const cb = captureCallback();
+      const result = requireDefined(
+        await getAppAction.handler(
+          keyedRuntime(),
+          makeMessage(OWNED_APP.id),
+          undefined,
+          undefined,
+          async (content) => {
+            deliveryCalls += 1;
+            if (deliveryCalls === 1) throw deliveryError;
+            return cb.fn(content);
+          },
+        ),
+        "action result",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ reason: "error" });
+      expect(result.error).toBe(deliveryError);
+      expect(listAppsCalls).toBe(0);
+      expect(cb.calls[0]?.text).toBe(result.userFacingText);
+    });
+  }
 
   it("returns a graceful not-found when nothing matches", async () => {
     setListApps(() =>

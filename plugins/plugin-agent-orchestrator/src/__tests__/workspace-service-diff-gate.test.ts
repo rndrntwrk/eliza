@@ -129,6 +129,76 @@ describe("GitHub workspace provider repository boundary", () => {
     ).rejects.toThrow("Invalid GitHub repository format");
     expect(createClient).not.toHaveBeenCalled();
   });
+
+  it("uses the App provider for a scoped credential and PR finalization", async () => {
+    const credential = {
+      id: "app-credential",
+      type: "github_app" as const,
+      token: "installation-token",
+      repo: "example/repo",
+      permissions: ["contents:write"],
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      provider: "github" as const,
+    };
+    const getCredentials = vi.fn(async () => credential);
+    const createPullRequest = vi.fn(async () => ({ number: 42 }));
+    const createClient = vi.fn();
+    const provider = createGitHubPatProvider({
+      createClient,
+      appProvider: () =>
+        ({
+          getCredentials,
+          createPullRequest,
+        }) as unknown as import("git-workspace-service").GitHubProvider,
+    });
+    const request = {
+      repo: "https://github.com/example/repo.git",
+      access: "write" as const,
+      context: { executionId: "execution-1" },
+    };
+    await expect(provider.getCredentials(request)).resolves.toBe(credential);
+    await provider.createPullRequest({
+      repo: request.repo,
+      sourceBranch: "feature",
+      targetBranch: "main",
+      title: "Change",
+      body: "Body",
+      credential,
+    });
+    expect(getCredentials).toHaveBeenCalledWith(request);
+    expect(createPullRequest).toHaveBeenCalledOnce();
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects an uninstalled App repository before provisioning", async () => {
+    const provision = vi.fn();
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => ({
+        getProvider: () => ({}),
+        credentialForRepository: async () => {
+          throw new Error("No GitHub App installation found for example/other");
+        },
+      })),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: tmpRoot("workspace-app-boundary-"),
+    });
+    (
+      service as unknown as {
+        workspaceService: { provision: typeof provision };
+      }
+    ).workspaceService = {
+      provision,
+    };
+    await expect(
+      service.provisionWorkspace({
+        repo: "https://github.com/example/other.git",
+        baseBranch: "main",
+      }),
+    ).rejects.toThrow("No GitHub App installation found");
+    expect(provision).not.toHaveBeenCalled();
+  });
 });
 
 describe("CodingWorkspaceService.createPR diff-review boundary", () => {

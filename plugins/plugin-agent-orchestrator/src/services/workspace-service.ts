@@ -23,6 +23,7 @@ import type {
   CredentialService as CredentialServiceInstance,
   GitCredential,
   GitCredentialRequest,
+  GitHubProvider as GitHubAppProvider,
   GitHubPatClient as GitHubPatClientInstance,
   GitProviderAdapter,
   IssueComment,
@@ -72,7 +73,17 @@ interface GitHubRepoParts {
 interface GitHubPatProviderOptions {
   createClient?: (token: string) => GitHubPatProviderClient;
   createRequest?: (token: string) => GitHubRequest;
+  appProvider?: () => GitHubAppProvider | null;
 }
+
+type AliceGitHubAppService = {
+  getProvider(): GitHubAppProvider | null;
+  credentialForRepository(
+    repo: string,
+    access: "read" | "write",
+  ): Promise<GitCredential>;
+  tokenForPullRequestGroundTruth(repo: string): Promise<string>;
+};
 
 import type { RemotePullRequest } from "./ground-truth-verifier.js";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
@@ -310,7 +321,9 @@ export function createGitHubPatProvider(
 
   return {
     name: "github",
-    getCredentials(_request: GitCredentialRequest): Promise<GitCredential> {
+    getCredentials(request: GitCredentialRequest): Promise<GitCredential> {
+      const app = options.appProvider?.();
+      if (app) return app.getCredentials(request);
       return Promise.reject(
         new Error(
           "GitHub workspace credentials must be supplied by the workspace request",
@@ -321,6 +334,10 @@ export function createGitHubPatProvider(
       return Promise.resolve();
     },
     async createPullRequest(prOptions): Promise<PullRequestInfo> {
+      const app = options.appProvider?.();
+      if (app && prOptions.credential.type === "github_app") {
+        return app.createPullRequest(prOptions);
+      }
       const { owner, repo } = parseGitHubRepository(prOptions.repo);
       const client = createClient(prOptions.credential.token);
       return client.createPullRequest(owner, repo, {
@@ -338,6 +355,10 @@ export function createGitHubPatProvider(
       branch: string,
       credential: GitCredential,
     ): Promise<boolean> {
+      const app = options.appProvider?.();
+      if (app && credential.type === "github_app") {
+        return app.branchExists(repo, branch, credential);
+      }
       const parts = parseGitHubRepository(repo);
       const client = createClient(credential.token);
       return client.branchExists(parts.owner, parts.repo, branch);
@@ -346,6 +367,10 @@ export function createGitHubPatProvider(
       repo: string,
       credential: GitCredential,
     ): Promise<string> {
+      const app = options.appProvider?.();
+      if (app && credential.type === "github_app") {
+        return app.getDefaultBranch(repo, credential);
+      }
       const parts = parseGitHubRepository(repo);
       const request = createRequest(credential.token);
       const response = await request<{ default_branch: string }>(
@@ -365,14 +390,29 @@ export function createGitHubPatProvider(
 const GIT_ALLOWED_PROTOCOLS = "http:https:ssh";
 
 function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
+  const {
+    GITHUB_APP_ID: _appId,
+    GITHUB_APP_PRIVATE_KEY_B64: _appKey,
+    GITHUB_TOKEN: _ambientToken,
+    ...safeEnv
+  } = process.env;
   if (!token || !isGitHubRepository(repo)) {
-    return { ...process.env, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+    return { ...safeEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
   }
+  const { owner, repo: name } = parseGitHubRepository(repo);
+  if (
+    !/^https:\/\/github\.com\//i.test(repo) ||
+    !/^[A-Za-z0-9-]+$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]+$/.test(name)
+  ) {
+    throw new Error("Invalid GitHub repository for credentialed git operation");
+  }
+  const exactRepositoryUrl = repo.replace(/\/$/, "");
   return {
-    ...process.env,
+    ...safeEnv,
     GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS,
     GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_KEY_0: `http.${exactRepositoryUrl}.extraheader`,
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
       `x-access-token:${token}`,
     ).toString("base64")}`,
@@ -455,6 +495,7 @@ export class CodingWorkspaceService {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private workspaces: Map<string, WorkspaceResult> = new Map();
   private ambientCredentialWorkspaceIds = new Set<string>();
+  private appCredentialWorkspaceIds = new Set<string>();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
   private scratchBySession: Map<string, ScratchWorkspaceRecord> = new Map();
   private scratchCleanupTimers: Map<string, ReturnType<typeof setTimeout>> =
@@ -549,7 +590,12 @@ export class CodingWorkspaceService {
     this.credentialService = new CredentialService({
       tokenStore: new MemoryTokenStore(),
     });
-    this.credentialService.registerProvider(createGitHubPatProvider());
+    this.credentialService.registerProvider(
+      createGitHubPatProvider({
+        appProvider: () =>
+          this.getAliceGitHubAppService()?.getProvider() ?? null,
+      }),
+    );
 
     this.workspaceService = new WorkspaceService({
       config: {
@@ -609,6 +655,14 @@ export class CodingWorkspaceService {
         }`,
       );
     });
+  }
+
+  private getAliceGitHubAppService(): AliceGitHubAppService | null {
+    return (
+      (this.runtime.getService(
+        "ALICE_GITHUB_INSTALLATION",
+      ) as AliceGitHubAppService | null) ?? null
+    );
   }
 
   private installCredentialSafeClone(): void {
@@ -700,10 +754,26 @@ export class CodingWorkspaceService {
     }
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
-    const userCredentials = this.resolveUserCredentials(
-      repo,
-      options.userCredentials,
-    );
+    const appService = this.getAliceGitHubAppService();
+    const appProvider = isGitHubRepository(repo)
+      ? appService?.getProvider()
+      : null;
+    const usesAliceApp = Boolean(appProvider);
+    if (usesAliceApp && options.userCredentials) {
+      throw new Error(
+        "Alice GitHub App workspaces cannot use caller-provided credentials",
+      );
+    }
+    // The dependency treats credentials as optional for public repositories.
+    // Check the installation first so an unapproved repo cannot fall through
+    // to an unauthenticated clone.
+    const appCredential =
+      appProvider && appService
+        ? await appService.credentialForRepository(repo, "write")
+        : undefined;
+    const userCredentials = usesAliceApp
+      ? undefined
+      : this.resolveUserCredentials(repo, options.userCredentials);
     const usesAmbientGitHubToken =
       !options.userCredentials &&
       userCredentials?.provider === "github" &&
@@ -711,9 +781,10 @@ export class CodingWorkspaceService {
       typeof userCredentials.token === "string" &&
       userCredentials.token.length > 0;
     const defaultBranchToken =
-      userCredentials?.type === "pat" || userCredentials?.type === "oauth"
+      appCredential?.token ??
+      (userCredentials?.type === "pat" || userCredentials?.type === "oauth"
         ? userCredentials.token
-        : undefined;
+        : undefined);
     // `baseBranch` flows into `git clone --branch …` / `git fetch origin …` via
     // the dependency's shell. Validate it whether it was caller-supplied
     // (untrusted) or resolved from the remote's symref (a malicious remote could
@@ -721,7 +792,9 @@ export class CodingWorkspaceService {
     // baseBranch is rejected before we ever spawn `git ls-remote`.
     const baseBranch = assertSafeGitRef(
       options.baseBranch ??
-        (await resolveDefaultBranch(repo, defaultBranchToken)),
+        (appCredential && appProvider
+          ? await appProvider.getDefaultBranch(repo, appCredential)
+          : await resolveDefaultBranch(repo, defaultBranchToken)),
       "baseBranch",
     );
 
@@ -751,9 +824,11 @@ export class CodingWorkspaceService {
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
-    if (usesAmbientGitHubToken) {
+    if (usesAmbientGitHubToken || usesAliceApp) {
       await this.removeAmbientCredentialHelper(workspace.path);
-      this.ambientCredentialWorkspaceIds.add(workspace.id);
+      if (usesAmbientGitHubToken)
+        this.ambientCredentialWorkspaceIds.add(workspace.id);
+      if (usesAliceApp) this.appCredentialWorkspaceIds.add(workspace.id);
     }
     const result: WorkspaceResult = {
       id: workspace.id,
@@ -892,10 +967,23 @@ export class CodingWorkspaceService {
     )
       ? this.resolveUserCredentials(workspace.repo, undefined)
       : undefined;
+    const appToken = this.appCredentialWorkspaceIds.has(workspaceId)
+      ? (
+          await this.getAliceGitHubAppService()?.credentialForRepository(
+            workspace.repo,
+            "write",
+          )
+        )?.token
+      : undefined;
+    if (this.appCredentialWorkspaceIds.has(workspaceId) && !appToken) {
+      throw new Error("Alice GitHub App is unavailable for this workspace");
+    }
     const ambientToken =
-      ambientCredentials?.type === "pat" || ambientCredentials?.type === "oauth"
+      appToken ??
+      (ambientCredentials?.type === "pat" ||
+      ambientCredentials?.type === "oauth"
         ? ambientCredentials.token
-        : undefined;
+        : undefined);
     await gitPush(
       workspace.path,
       workspace.branch,
@@ -1122,6 +1210,27 @@ export class CodingWorkspaceService {
     };
   }
 
+  private async getGitHubContextForRepo(repo: string): Promise<GitHubContext> {
+    const app = this.getAliceGitHubAppService();
+    if (!app?.getProvider()) return this.getGitHubContext();
+    const token = await app.tokenForPullRequestGroundTruth(repo);
+    // Keep each operation's token and client local. A shared mutable Octokit
+    // would race when two repositories are used concurrently.
+    const client = new GitHubPatClient({ token });
+    const request = this.createGitHubRequest(token);
+    return {
+      runtime: this.runtime,
+      githubClient: client,
+      setGithubClient: () => {},
+      githubRequest: request,
+      setGithubRequest: () => {},
+      githubAuthInProgress: null,
+      setGithubAuthInProgress: () => {},
+      authPromptCallback: null,
+      log: (msg: string) => this.log(msg),
+    };
+  }
+
   private createGitHubRequest(token: string): GitHubRequest {
     const octokit = new Octokit({ auth: token });
     return octokit.request.bind(octokit) as GitHubRequest;
@@ -1145,17 +1254,30 @@ export class CodingWorkspaceService {
   async getPullRequestGroundTruth(
     link: ParsedPullRequestLink,
   ): Promise<RemotePullRequest | null> {
-    return ghGetPullRequestGroundTruth(this.getGitHubContext(), link);
+    return ghGetPullRequestGroundTruth(
+      await this.getGitHubContextForRepo(link.repo),
+      link,
+    );
   }
 
   async createIssue(
     repo: string,
     options: CreateIssueOptions,
   ): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.createIssue(parts.owner, parts.repo, options);
+    }
     return ghCreateIssue(this.getGitHubContext(), repo, options);
   }
 
   async getIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.getIssue(parts.owner, parts.repo, issueNumber);
+    }
     return ghGetIssue(this.getGitHubContext(), repo, issueNumber);
   }
 
@@ -1167,6 +1289,11 @@ export class CodingWorkspaceService {
       assignee?: string;
     },
   ): Promise<IssueInfo[]> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.listIssues(parts.owner, parts.repo, options);
+    }
     return ghListIssues(this.getGitHubContext(), repo, options);
   }
 
@@ -1181,6 +1308,11 @@ export class CodingWorkspaceService {
       assignees?: string[];
     },
   ): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.updateIssue(parts.owner, parts.repo, issueNumber, options);
+    }
     return ghUpdateIssue(this.getGitHubContext(), repo, issueNumber, options);
   }
 
@@ -1189,6 +1321,11 @@ export class CodingWorkspaceService {
     issueNumber: number,
     body: string,
   ): Promise<IssueComment> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.addComment(parts.owner, parts.repo, issueNumber, { body });
+    }
     return ghAddComment(this.getGitHubContext(), repo, issueNumber, body);
   }
 
@@ -1196,14 +1333,29 @@ export class CodingWorkspaceService {
     repo: string,
     issueNumber: number,
   ): Promise<IssueComment[]> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.listComments(parts.owner, parts.repo, issueNumber);
+    }
     return ghListComments(this.getGitHubContext(), repo, issueNumber);
   }
 
   async closeIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.closeIssue(parts.owner, parts.repo, issueNumber);
+    }
     return ghCloseIssue(this.getGitHubContext(), repo, issueNumber);
   }
 
   async reopenIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      return app.reopenIssue(parts.owner, parts.repo, issueNumber);
+    }
     return ghReopenIssue(this.getGitHubContext(), repo, issueNumber);
   }
 
@@ -1212,6 +1364,19 @@ export class CodingWorkspaceService {
     issueNumber: number,
     labels: string[],
   ): Promise<IssueInfo> {
+    const app = this.getAliceGitHubAppService()?.getProvider();
+    if (app) {
+      const parts = parseGitHubRepository(repo);
+      await app.addLabels(parts.owner, parts.repo, issueNumber, labels);
+      const issue = await app.getIssue(parts.owner, parts.repo, issueNumber);
+      const observed = new Set(
+        issue.labels.map((label) => label.toLowerCase()),
+      );
+      if (labels.some((label) => !observed.has(label.toLowerCase()))) {
+        throw new Error("GitHub label write was not visible on readback");
+      }
+      return issue;
+    }
     return ghAddLabels(this.getGitHubContext(), repo, issueNumber, labels);
   }
 

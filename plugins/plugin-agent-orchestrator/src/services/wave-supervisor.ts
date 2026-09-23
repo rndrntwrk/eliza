@@ -301,6 +301,12 @@ class RuntimeGitHubPullRequestSource implements OpenPullRequestSource {
       getProvider(): unknown;
       tokenForPullRequestGroundTruth(repo: string): Promise<string>;
     } | null;
+    if (
+      process.env.ALICE_RUNTIME_PROFILE === "full-gated" &&
+      !app?.getProvider()
+    ) {
+      throw new Error("Alice GitHub App is not configured");
+    }
     const results: OpenPullRequestScope[] = [];
     for (const rawRepo of new Set(repos)) {
       const { owner, repo } = parseOwnerRepo(rawRepo);

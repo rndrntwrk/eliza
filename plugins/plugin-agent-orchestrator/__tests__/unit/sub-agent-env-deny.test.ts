@@ -24,7 +24,7 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
   });
 
   it("denies broad GitHub host tokens but allows dedicated registry credentials", () => {
-    for (const key of ["GITHUB_TOKEN", "GH_TOKEN", "CR_PAT"]) {
+    for (const key of ["GITHUB_TOKEN", "GITHUB_AGENT_PAT", "GH_TOKEN", "CR_PAT"]) {
       expect(isDeniedSubAgentEnvKey(key)).toBe(true);
     }
     for (const key of [

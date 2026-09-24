@@ -402,6 +402,11 @@ function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
   if (!token || !isGitHubRepository(repo)) {
     return { ...safeEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
   }
+  // SSH remotes authenticate through the configured SSH key, not an HTTP
+  // header. Keep that path usable without passing an App token to the child.
+  if (/^[^@\s]+@github\.com:/i.test(repo)) {
+    return { ...safeEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+  }
   const { owner, repo: name } = parseGitHubRepository(repo);
   if (
     !/^https:\/\/github\.com\//i.test(repo) ||
@@ -754,7 +759,7 @@ export class CodingWorkspaceService {
     // schemes, AND shell metacharacters — so the SAME validated string is safe
     // on every downstream strategy (credentialed execFile clone, worktree, and
     // the dependency's unauthenticated shell clone). Throws before provision().
-    const repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
+    let repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
     // A caller-supplied branch name (HTTP body / action content) bypasses the
     // sanitized auto-mint and flows raw into `git checkout -b` / `git worktree
     // add -b` via the dependency's shell, so validate it as a git ref here.
@@ -768,6 +773,10 @@ export class CodingWorkspaceService {
       ? appService?.getProvider()
       : null;
     const usesAliceApp = Boolean(appProvider);
+    if (usesAliceApp && /^[^@\s]+@github\.com:/i.test(repo)) {
+      const { owner, repo: name } = parseGitHubRepository(repo);
+      repo = `https://github.com/${owner}/${name}.git`;
+    }
     if (usesAliceApp && options.userCredentials) {
       throw new Error(
         "Alice GitHub App workspaces cannot use caller-provided credentials",

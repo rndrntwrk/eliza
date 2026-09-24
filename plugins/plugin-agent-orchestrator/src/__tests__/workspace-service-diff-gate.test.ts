@@ -209,6 +209,52 @@ describe("GitHub workspace provider repository boundary", () => {
     expect(provision).not.toHaveBeenCalled();
   });
 
+  it("uses the App's scoped HTTPS clone for a GitHub SSH repository input", async () => {
+    const workspacePath = tmpRoot("workspace-app-ssh-");
+    const credentialForRepository = vi.fn(async () => ({
+      token: "short-lived-token",
+    }));
+    const provision = vi.fn(async (config: { repo: string }) => ({
+      id: "app-ssh-workspace",
+      path: workspacePath,
+      branch: { name: "feature", baseBranch: "main" },
+      strategy: "clone",
+      repo: config.repo,
+      status: "ready",
+    }));
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => ({
+        getProvider: () => ({}),
+        credentialForRepository,
+      })),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: workspacePath,
+    });
+    const internals = service as unknown as {
+      workspaceService: { provision: typeof provision };
+      enforceWorkspaceDiskBudget: () => Promise<void>;
+      removeAmbientCredentialHelper: () => Promise<void>;
+    };
+    internals.workspaceService = { provision };
+    internals.enforceWorkspaceDiskBudget = async () => {};
+    internals.removeAmbientCredentialHelper = async () => {};
+
+    await service.provisionWorkspace({
+      repo: "git@github.com:example/repo.git",
+      baseBranch: "main",
+    });
+
+    expect(credentialForRepository).toHaveBeenCalledWith(
+      "https://github.com/example/repo.git",
+      "write",
+    );
+    expect(provision).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: "https://github.com/example/repo.git" }),
+    );
+  });
+
   it("does not expose an App workspace when credential scrubbing fails", async () => {
     const workspacePath = tmpRoot("workspace-app-scrub-");
     const provision = vi.fn(async () => ({

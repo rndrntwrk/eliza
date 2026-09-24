@@ -297,14 +297,27 @@ class RuntimeGitHubPullRequestSource implements OpenPullRequestSource {
     repos: readonly string[],
   ): Promise<OpenPullRequestScope[]> {
     const token = nonEmptyString(this.runtime.getSetting("GITHUB_TOKEN"));
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    const app = this.runtime.getService("ALICE_GITHUB_INSTALLATION") as {
+      getProvider(): unknown;
+      tokenForPullRequestGroundTruth(repo: string): Promise<string>;
+    } | null;
+    if (
+      process.env.ALICE_RUNTIME_PROFILE === "full-gated" &&
+      !app?.getProvider()
+    ) {
+      throw new Error("Alice GitHub App is not configured");
+    }
     const results: OpenPullRequestScope[] = [];
     for (const rawRepo of new Set(repos)) {
       const { owner, repo } = parseOwnerRepo(rawRepo);
+      const repoToken = app?.getProvider()
+        ? await app.tokenForPullRequestGroundTruth(`${owner}/${repo}`)
+        : token;
+      const headers: Record<string, string> = {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(repoToken ? { Authorization: `Bearer ${repoToken}` } : {}),
+      };
       const pulls: unknown[] = [];
       for (let page = 1; ; page += 1) {
         const pullsResponse = await fetch(

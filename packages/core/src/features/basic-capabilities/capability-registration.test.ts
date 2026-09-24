@@ -15,8 +15,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime.ts";
 import type { Character } from "../../types/agent.ts";
+import { Service } from "../../types/service.ts";
+import { createBasicCapabilitiesPlugin as createEdgeBasicCapabilitiesPlugin } from "./index.edge.ts";
 import {
 	type CapabilitySettingFlags,
+	createBasicCapabilitiesPlugin,
 	type ExplicitCapabilityOptions,
 	resolveCapabilityConfig,
 } from "./index.ts";
@@ -92,6 +95,49 @@ describe("resolveCapabilityConfig", () => {
 });
 
 describe("basic-capabilities registration through the declaring plugin", () => {
+	it("removes every executable plugin surface when basic capabilities are disabled", () => {
+		const plugin = createBasicCapabilitiesPlugin({ disableBasic: true });
+
+		expect(plugin.actions).toEqual([]);
+		expect(plugin.providers).toEqual([]);
+		expect(plugin.evaluators).toEqual([]);
+		expect(plugin.services).toEqual([]);
+		expect(plugin.routes).toEqual([]);
+		expect(plugin.events).toEqual({});
+		expect(plugin.dispose).toBeUndefined();
+	});
+
+	it("does not stop an unowned basic service when the disabled plugin unloads", async () => {
+		const stop = vi.fn(async () => {});
+		class UnownedEvaluatorService extends Service {
+			static override serviceType = "evaluator" as const;
+			capabilityDescription = "unowned evaluator sentinel";
+
+			override async stop(): Promise<void> {
+				await stop();
+			}
+		}
+
+		const runtime = await bootRuntime({
+			character: {
+				name: "cap-disabled-unload",
+				settings: { DISABLE_BASIC_CAPABILITIES: "true" },
+			} as Character,
+			enableDocuments: false,
+			enableRelationships: false,
+			enableTrajectories: false,
+		});
+		runtime.services.set("evaluator", [new UnownedEvaluatorService(runtime)]);
+
+		try {
+			await runtime.unloadPlugin("basic-capabilities");
+			expect(stop).not.toHaveBeenCalled();
+		} finally {
+			runtime.services.delete("evaluator");
+			await runtime.stop({ fast: true });
+		}
+	});
+
 	it("registers only basic actions with the default config", async () => {
 		const runtime = await bootRuntime({
 			character: { name: "cap-default" } as Character,
@@ -194,6 +240,18 @@ describe("basic-capabilities registration through the declaring plugin", () => {
 			} as Character,
 		});
 		expect(actionNames(runtime).has(BASIC_ACTION)).toBe(false);
+	});
+});
+
+describe("Workerd basic-capabilities registration", () => {
+	it("removes every executable plugin surface when basic capabilities are disabled", () => {
+		const plugin = createEdgeBasicCapabilitiesPlugin({ disableBasic: true });
+
+		expect(plugin.actions).toEqual([]);
+		expect(plugin.providers).toEqual([]);
+		expect(plugin.evaluators).toEqual([]);
+		expect(plugin.services).toEqual([]);
+		expect(plugin.dispose).toBeUndefined();
 	});
 });
 

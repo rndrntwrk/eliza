@@ -30,6 +30,7 @@ import {
   recordLlmCall,
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   generateText,
@@ -685,7 +686,7 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
  */
 function normalizeNativeToolsForCall(
   tools: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { cerebrasMode?: boolean; sanitizeForWire?: boolean } = {}
 ): NormalizedNativeToolsResult {
   const recordArgTransformsByTool: Record<string, RecordArgTransform[]> = {};
 
@@ -790,7 +791,12 @@ function normalizeNativeToolsForCall(
     // surface it to the model under that name. Tool calls come back with the
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
-    const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const providerRegisteredName = options.cerebrasMode
+      ? sanitizeFunctionNameForCerebras(name)
+      : name;
+    const registeredName = options.sanitizeForWire
+      ? toWellFormedUnicode(providerRegisteredName)
+      : providerRegisteredName;
     const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
     if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
       throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
@@ -808,9 +814,18 @@ function normalizeNativeToolsForCall(
       recordArgTransformsByTool[registeredName] = recordArgTransforms;
     }
 
+    // The AI SDK wrapper exposes `jsonSchema` as an enumerable getter. At the
+    // provider boundary, sanitize the caller-owned plain values first and only
+    // then create that trusted wrapper; the generic deep sanitizer must remain
+    // fail-closed for arbitrary enumerable accessors.
+    const wireDescription =
+      description && options.sanitizeForWire ? toWellFormedUnicode(description) : description;
+    const wireInputSchema = options.sanitizeForWire
+      ? deepToWellFormedUnicode(inputSchema)
+      : inputSchema;
     toolSet[registeredName] = {
-      ...(description ? { description } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      ...(wireDescription ? { description: wireDescription } : {}),
+      inputSchema: jsonSchema(wireInputSchema as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -2288,6 +2303,7 @@ async function generateTextByModelType(
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedToolResult = normalizeNativeToolsForCall(paramsWithAttachments.tools, {
     cerebrasMode,
+    sanitizeForWire: true,
   });
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
@@ -2351,7 +2367,15 @@ async function generateTextByModelType(
   // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
   // so EVERY outgoing string — including tool descriptions/schemas, output
   // schemas, and provider options — is forced to well-formed Unicode here.
-  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  // Array tools were sanitized as plain caller-owned values above, before the
+  // trusted AI SDK schema wrapper introduced its enumerable `jsonSchema`
+  // getter. Existing ToolSet callers still pass through the generic fail-closed
+  // walk because their wrappers and callbacks were not created in this path.
+  const sanitizedTools = normalizedTools
+    ? Array.isArray(paramsWithAttachments.tools)
+      ? normalizedTools
+      : deepToWellFormedUnicode(normalizedTools)
+    : undefined;
   const sanitizedToolChoice = normalizedToolChoice
     ? deepToWellFormedUnicode(normalizedToolChoice)
     : undefined;

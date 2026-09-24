@@ -28,6 +28,7 @@ export interface CodexAuthDeps {
 }
 
 let injectedDeps: CodexAuthDeps = {};
+let persistHook: ((auth: CodexAuth, path: string) => Promise<void>) | undefined;
 
 export function __setCodexAuthDeps(deps: CodexAuthDeps): void {
   injectedDeps = deps;
@@ -35,6 +36,12 @@ export function __setCodexAuthDeps(deps: CodexAuthDeps): void {
 
 export function __resetCodexAuthDeps(): void {
   injectedDeps = {};
+}
+
+export function setCodexAuthPersistHook(
+  hook: ((auth: CodexAuth, path: string) => Promise<void>) | undefined
+): void {
+  persistHook = hook;
 }
 
 function getFetch(): typeof fetch {
@@ -80,6 +87,7 @@ export async function saveCodexAuth(auth: CodexAuth, path: string): Promise<void
   await writeFile(tmp, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
   try {
     await rename(tmp, path);
+    await persistHook?.(auth, path);
   } catch (err) {
     try {
       await unlink(tmp);

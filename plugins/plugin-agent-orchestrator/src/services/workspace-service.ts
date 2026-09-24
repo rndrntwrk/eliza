@@ -23,6 +23,7 @@ import type {
   CredentialService as CredentialServiceInstance,
   GitCredential,
   GitCredentialRequest,
+  GitHubProvider as GitHubAppProvider,
   GitHubPatClient as GitHubPatClientInstance,
   GitProviderAdapter,
   IssueComment,
@@ -72,7 +73,18 @@ interface GitHubRepoParts {
 interface GitHubPatProviderOptions {
   createClient?: (token: string) => GitHubPatProviderClient;
   createRequest?: (token: string) => GitHubRequest;
+  appProvider?: () => GitHubAppProvider | null;
 }
+
+type AliceGitHubAppService = {
+  getProvider(): GitHubAppProvider | null;
+  credentialForRepository(
+    repo: string,
+    access: "read" | "write",
+  ): Promise<GitCredential>;
+  tokenForPullRequestGroundTruth(repo: string): Promise<string>;
+  tokenForIssues(repo: string, access: "read" | "write"): Promise<string>;
+};
 
 import type { RemotePullRequest } from "./ground-truth-verifier.js";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
@@ -307,10 +319,24 @@ export function createGitHubPatProvider(
       const octokit = new Octokit({ auth: token });
       return octokit.request.bind(octokit) as GitHubRequest;
     });
+  const freshToken = async (
+    repo: string,
+    credential: GitCredential,
+    access: "read" | "write",
+  ): Promise<string> => {
+    if (credential.type !== "github_app") return credential.token;
+    const app = options.appProvider?.();
+    if (!app) throw new Error("Alice GitHub App is unavailable");
+    const parts = parseGitHubRepository(repo);
+    return (await app.getCredentialsForRepo(parts.owner, parts.repo, access))
+      .token;
+  };
 
   return {
     name: "github",
-    getCredentials(_request: GitCredentialRequest): Promise<GitCredential> {
+    getCredentials(request: GitCredentialRequest): Promise<GitCredential> {
+      const app = options.appProvider?.();
+      if (app) return app.getCredentials(request);
       return Promise.reject(
         new Error(
           "GitHub workspace credentials must be supplied by the workspace request",
@@ -322,7 +348,9 @@ export function createGitHubPatProvider(
     },
     async createPullRequest(prOptions): Promise<PullRequestInfo> {
       const { owner, repo } = parseGitHubRepository(prOptions.repo);
-      const client = createClient(prOptions.credential.token);
+      const client = createClient(
+        await freshToken(prOptions.repo, prOptions.credential, "write"),
+      );
       return client.createPullRequest(owner, repo, {
         title: prOptions.title,
         body: prOptions.body,
@@ -339,7 +367,7 @@ export function createGitHubPatProvider(
       credential: GitCredential,
     ): Promise<boolean> {
       const parts = parseGitHubRepository(repo);
-      const client = createClient(credential.token);
+      const client = createClient(await freshToken(repo, credential, "read"));
       return client.branchExists(parts.owner, parts.repo, branch);
     },
     async getDefaultBranch(
@@ -347,7 +375,7 @@ export function createGitHubPatProvider(
       credential: GitCredential,
     ): Promise<string> {
       const parts = parseGitHubRepository(repo);
-      const request = createRequest(credential.token);
+      const request = createRequest(await freshToken(repo, credential, "read"));
       const response = await request<{ default_branch: string }>(
         "GET /repos/{owner}/{repo}",
         { owner: parts.owner, repo: parts.repo },
@@ -365,14 +393,34 @@ export function createGitHubPatProvider(
 const GIT_ALLOWED_PROTOCOLS = "http:https:ssh";
 
 function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
+  const {
+    GITHUB_APP_ID: _appId,
+    GITHUB_APP_PRIVATE_KEY_B64: _appKey,
+    GITHUB_TOKEN: _ambientToken,
+    ...safeEnv
+  } = process.env;
   if (!token || !isGitHubRepository(repo)) {
-    return { ...process.env, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+    return { ...safeEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
   }
+  // SSH remotes authenticate through the configured SSH key, not an HTTP
+  // header. Keep that path usable without passing an App token to the child.
+  if (/^[^@\s]+@github\.com:/i.test(repo)) {
+    return { ...safeEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+  }
+  const { owner, repo: name } = parseGitHubRepository(repo);
+  if (
+    !/^https:\/\/github\.com\//i.test(repo) ||
+    !/^[A-Za-z0-9-]+$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]+$/.test(name)
+  ) {
+    throw new Error("Invalid GitHub repository for credentialed git operation");
+  }
+  const exactRepositoryUrl = repo.replace(/\/$/, "");
   return {
-    ...process.env,
+    ...safeEnv,
     GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS,
     GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_KEY_0: `http.${exactRepositoryUrl}.extraheader`,
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
       `x-access-token:${token}`,
     ).toString("base64")}`,
@@ -455,6 +503,7 @@ export class CodingWorkspaceService {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private workspaces: Map<string, WorkspaceResult> = new Map();
   private ambientCredentialWorkspaceIds = new Set<string>();
+  private appCredentialWorkspaceIds = new Set<string>();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
   private scratchBySession: Map<string, ScratchWorkspaceRecord> = new Map();
   private scratchCleanupTimers: Map<string, ReturnType<typeof setTimeout>> =
@@ -549,7 +598,12 @@ export class CodingWorkspaceService {
     this.credentialService = new CredentialService({
       tokenStore: new MemoryTokenStore(),
     });
-    this.credentialService.registerProvider(createGitHubPatProvider());
+    this.credentialService.registerProvider(
+      createGitHubPatProvider({
+        appProvider: () =>
+          this.getAliceGitHubAppService()?.getProvider() ?? null,
+      }),
+    );
 
     this.workspaceService = new WorkspaceService({
       config: {
@@ -609,6 +663,20 @@ export class CodingWorkspaceService {
         }`,
       );
     });
+  }
+
+  private getAliceGitHubAppService(): AliceGitHubAppService | null {
+    const service =
+      (this.runtime.getService(
+        "ALICE_GITHUB_INSTALLATION",
+      ) as AliceGitHubAppService | null) ?? null;
+    if (
+      process.env.ALICE_RUNTIME_PROFILE === "full-gated" &&
+      !service?.getProvider()
+    ) {
+      throw new Error("Alice GitHub App is not configured");
+    }
+    return service;
   }
 
   private installCredentialSafeClone(): void {
@@ -691,7 +759,7 @@ export class CodingWorkspaceService {
     // schemes, AND shell metacharacters — so the SAME validated string is safe
     // on every downstream strategy (credentialed execFile clone, worktree, and
     // the dependency's unauthenticated shell clone). Throws before provision().
-    const repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
+    let repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
     // A caller-supplied branch name (HTTP body / action content) bypasses the
     // sanitized auto-mint and flows raw into `git checkout -b` / `git worktree
     // add -b` via the dependency's shell, so validate it as a git ref here.
@@ -700,10 +768,30 @@ export class CodingWorkspaceService {
     }
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
-    const userCredentials = this.resolveUserCredentials(
-      repo,
-      options.userCredentials,
-    );
+    const appService = this.getAliceGitHubAppService();
+    const appProvider = isGitHubRepository(repo)
+      ? appService?.getProvider()
+      : null;
+    const usesAliceApp = Boolean(appProvider);
+    if (usesAliceApp && /^[^@\s]+@github\.com:/i.test(repo)) {
+      const { owner, repo: name } = parseGitHubRepository(repo);
+      repo = `https://github.com/${owner}/${name}.git`;
+    }
+    if (usesAliceApp && options.userCredentials) {
+      throw new Error(
+        "Alice GitHub App workspaces cannot use caller-provided credentials",
+      );
+    }
+    // The dependency treats credentials as optional for public repositories.
+    // Check the installation first so an unapproved repo cannot fall through
+    // to an unauthenticated clone.
+    const appCredential =
+      appProvider && appService
+        ? await appService.credentialForRepository(repo, "write")
+        : undefined;
+    const userCredentials = usesAliceApp
+      ? undefined
+      : this.resolveUserCredentials(repo, options.userCredentials);
     const usesAmbientGitHubToken =
       !options.userCredentials &&
       userCredentials?.provider === "github" &&
@@ -711,9 +799,10 @@ export class CodingWorkspaceService {
       typeof userCredentials.token === "string" &&
       userCredentials.token.length > 0;
     const defaultBranchToken =
-      userCredentials?.type === "pat" || userCredentials?.type === "oauth"
+      appCredential?.token ??
+      (userCredentials?.type === "pat" || userCredentials?.type === "oauth"
         ? userCredentials.token
-        : undefined;
+        : undefined);
     // `baseBranch` flows into `git clone --branch …` / `git fetch origin …` via
     // the dependency's shell. Validate it whether it was caller-supplied
     // (untrusted) or resolved from the remote's symref (a malicious remote could
@@ -721,7 +810,13 @@ export class CodingWorkspaceService {
     // baseBranch is rejected before we ever spawn `git ls-remote`.
     const baseBranch = assertSafeGitRef(
       options.baseBranch ??
-        (await resolveDefaultBranch(repo, defaultBranchToken)),
+        (appCredential && appProvider
+          ? (
+              await this.createGitHubRequest(appCredential.token)<{
+                default_branch: string;
+              }>("GET /repos/{owner}/{repo}", { ...parseGitHubRepository(repo) })
+            ).data.default_branch
+          : await resolveDefaultBranch(repo, defaultBranchToken)),
       "baseBranch",
     );
 
@@ -751,9 +846,18 @@ export class CodingWorkspaceService {
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
-    if (usesAmbientGitHubToken) {
-      await this.removeAmbientCredentialHelper(workspace.path);
-      this.ambientCredentialWorkspaceIds.add(workspace.id);
+    if (usesAmbientGitHubToken || usesAliceApp) {
+      try {
+        await this.removeAmbientCredentialHelper(workspace.path, usesAliceApp);
+      } catch (error) {
+        // Never hand an App workspace containing a token file to a coding
+        // child. Teardown is best-effort, but the provision itself fails.
+        await this.workspaceService.cleanup(workspace.id).catch(() => {});
+        throw error;
+      }
+      if (usesAmbientGitHubToken)
+        this.ambientCredentialWorkspaceIds.add(workspace.id);
+      if (usesAliceApp) this.appCredentialWorkspaceIds.add(workspace.id);
     }
     const result: WorkspaceResult = {
       id: workspace.id,
@@ -892,10 +996,23 @@ export class CodingWorkspaceService {
     )
       ? this.resolveUserCredentials(workspace.repo, undefined)
       : undefined;
+    const appToken = this.appCredentialWorkspaceIds.has(workspaceId)
+      ? (
+          await this.getAliceGitHubAppService()?.credentialForRepository(
+            workspace.repo,
+            "write",
+          )
+        )?.token
+      : undefined;
+    if (this.appCredentialWorkspaceIds.has(workspaceId) && !appToken) {
+      throw new Error("Alice GitHub App is unavailable for this workspace");
+    }
     const ambientToken =
-      ambientCredentials?.type === "pat" || ambientCredentials?.type === "oauth"
+      appToken ??
+      (ambientCredentials?.type === "pat" ||
+      ambientCredentials?.type === "oauth"
         ? ambientCredentials.token
-        : undefined;
+        : undefined);
     await gitPush(
       workspace.path,
       workspace.branch,
@@ -1122,6 +1239,36 @@ export class CodingWorkspaceService {
     };
   }
 
+  private async getGitHubContextForRepo(
+    repo: string,
+    purpose: "pull-request-ground-truth" | "issues-read" | "issues-write",
+  ): Promise<GitHubContext> {
+    const app = this.getAliceGitHubAppService();
+    if (!app?.getProvider()) return this.getGitHubContext();
+    const token =
+      purpose === "pull-request-ground-truth"
+        ? await app.tokenForPullRequestGroundTruth(repo)
+        : await app.tokenForIssues(
+            repo,
+            purpose === "issues-write" ? "write" : "read",
+          );
+    // Keep each operation's token and client local. A shared mutable Octokit
+    // would race when two repositories are used concurrently.
+    const client = new GitHubPatClient({ token });
+    const request = this.createGitHubRequest(token);
+    return {
+      runtime: this.runtime,
+      githubClient: client,
+      setGithubClient: () => {},
+      githubRequest: request,
+      setGithubRequest: () => {},
+      githubAuthInProgress: null,
+      setGithubAuthInProgress: () => {},
+      authPromptCallback: null,
+      log: (msg: string) => this.log(msg),
+    };
+  }
+
   private createGitHubRequest(token: string): GitHubRequest {
     const octokit = new Octokit({ auth: token });
     return octokit.request.bind(octokit) as GitHubRequest;
@@ -1145,18 +1292,32 @@ export class CodingWorkspaceService {
   async getPullRequestGroundTruth(
     link: ParsedPullRequestLink,
   ): Promise<RemotePullRequest | null> {
-    return ghGetPullRequestGroundTruth(this.getGitHubContext(), link);
+    return ghGetPullRequestGroundTruth(
+      await this.getGitHubContextForRepo(
+        link.repo,
+        "pull-request-ground-truth",
+      ),
+      link,
+    );
   }
 
   async createIssue(
     repo: string,
     options: CreateIssueOptions,
   ): Promise<IssueInfo> {
-    return ghCreateIssue(this.getGitHubContext(), repo, options);
+    return ghCreateIssue(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      options,
+    );
   }
 
   async getIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
-    return ghGetIssue(this.getGitHubContext(), repo, issueNumber);
+    return ghGetIssue(
+      await this.getGitHubContextForRepo(repo, "issues-read"),
+      repo,
+      issueNumber,
+    );
   }
 
   async listIssues(
@@ -1167,7 +1328,11 @@ export class CodingWorkspaceService {
       assignee?: string;
     },
   ): Promise<IssueInfo[]> {
-    return ghListIssues(this.getGitHubContext(), repo, options);
+    return ghListIssues(
+      await this.getGitHubContextForRepo(repo, "issues-read"),
+      repo,
+      options,
+    );
   }
 
   async updateIssue(
@@ -1181,7 +1346,12 @@ export class CodingWorkspaceService {
       assignees?: string[];
     },
   ): Promise<IssueInfo> {
-    return ghUpdateIssue(this.getGitHubContext(), repo, issueNumber, options);
+    return ghUpdateIssue(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      issueNumber,
+      options,
+    );
   }
 
   async addComment(
@@ -1189,22 +1359,39 @@ export class CodingWorkspaceService {
     issueNumber: number,
     body: string,
   ): Promise<IssueComment> {
-    return ghAddComment(this.getGitHubContext(), repo, issueNumber, body);
+    return ghAddComment(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      issueNumber,
+      body,
+    );
   }
 
   async listComments(
     repo: string,
     issueNumber: number,
   ): Promise<IssueComment[]> {
-    return ghListComments(this.getGitHubContext(), repo, issueNumber);
+    return ghListComments(
+      await this.getGitHubContextForRepo(repo, "issues-read"),
+      repo,
+      issueNumber,
+    );
   }
 
   async closeIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
-    return ghCloseIssue(this.getGitHubContext(), repo, issueNumber);
+    return ghCloseIssue(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      issueNumber,
+    );
   }
 
   async reopenIssue(repo: string, issueNumber: number): Promise<IssueInfo> {
-    return ghReopenIssue(this.getGitHubContext(), repo, issueNumber);
+    return ghReopenIssue(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      issueNumber,
+    );
   }
 
   async addLabels(
@@ -1212,7 +1399,12 @@ export class CodingWorkspaceService {
     issueNumber: number,
     labels: string[],
   ): Promise<IssueInfo> {
-    return ghAddLabels(this.getGitHubContext(), repo, issueNumber, labels);
+    return ghAddLabels(
+      await this.getGitHubContextForRepo(repo, "issues-write"),
+      repo,
+      issueNumber,
+      labels,
+    );
   }
 
   // === Workspace Lifecycle ===
@@ -1471,8 +1663,47 @@ export class CodingWorkspaceService {
     return undefined;
   }
 
-  private async removeAmbientCredentialHelper(workspacePath: string) {
+  private async removeAmbientCredentialHelper(
+    workspacePath: string,
+    strict = false,
+  ) {
     const helperDir = path.join(workspacePath, ".git-workspace");
+    if (strict) {
+      await fs.rm(helperDir, { recursive: true, force: true });
+      try {
+        await fs.lstat(helperDir);
+        throw new Error("GitHub App credential file remains in workspace");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          "git",
+          ["config", "--local", "--unset-all", "credential.helper"],
+          { cwd: workspacePath, timeout: 10_000 },
+          (error) => {
+            if (error && error.code !== 5) reject(error);
+            else resolve();
+          },
+        );
+      });
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          "git",
+          ["config", "--local", "--get-all", "credential.helper"],
+          { cwd: workspacePath, timeout: 10_000 },
+          (error, stdout) => {
+            if (error && error.code !== 1) reject(error);
+            else if (stdout.trim())
+              reject(
+                new Error("GitHub App credential helper remains configured"),
+              );
+            else resolve();
+          },
+        );
+      });
+      return;
+    }
     // error-policy:J6 best-effort teardown of the ambient credential helper dir;
     // a missing/undeletable dir must not fail workspace removal.
     await fs.rm(helperDir, { recursive: true, force: true }).catch(() => {});

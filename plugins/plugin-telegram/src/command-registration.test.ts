@@ -73,6 +73,7 @@ import {
   buildTelegramCommandDescriptors,
   registerTelegramCommandHandlers,
   resolveTelegramEmbedUrl,
+  resolveTelegramSenderAuth,
 } from "./command-registration";
 import type { MessageManager } from "./messageManager";
 
@@ -379,6 +380,26 @@ describe("Telegram Mini App launch command", () => {
 });
 
 describe("auth gating", () => {
+  it("checks native commands against the paired owner entity", async () => {
+    const ownerId = "eb728479-4151-4ee6-92ef-672007b44968";
+    const runtime = {
+      ...makeRuntime({ ELIZA_ADMIN_ENTITY_ID: ownerId }),
+      getEntityById: vi.fn(async () => ({
+        id: ownerId,
+        metadata: { telegram: { userId: "4242" } },
+      })),
+    } as unknown as IAgentRuntime;
+
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, runtime, "default");
+
+    expect(hasRoleAccess).toHaveBeenCalledTimes(2);
+    for (const [, memory] of hasRoleAccess.mock.calls) {
+      expect(memory.entityId).toBe(ownerId);
+      expect(memory.metadata?.telegram).toMatchObject({ userId: "4242" });
+    }
+  });
+
   it("refuses a requiresAuth command when the sender is not an owner", async () => {
     hasRoleAccess.mockResolvedValue(false);
     const { manager, handleMessage } = makeMessageManager();

@@ -21,7 +21,7 @@ const DENY_ENV_PATTERNS = [
   // Repo-scoped GitHub host credentials must not be injected into sub-agents,
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
-  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT|GH_PAT)$/i,
+  /^(?:GITHUB_TOKEN|GITHUB_AGENT_PAT|GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY_B64|GH_TOKEN|CR_PAT|GH_PAT)$/i,
   // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
   // AFTER this filter runs). A caller- or host-supplied value would let the
   // spawner inject arbitrary provider config into the child, so it is denied at

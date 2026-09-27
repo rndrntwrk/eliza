@@ -311,6 +311,17 @@ describe("AcpSessionStore", () => {
     expect(store.backend).toBe("runtime-db");
   });
 
+  it("selects dedicated runtimeSql for Alice's sessions", () => {
+    const store = new AcpSessionStore({
+      runtime: {
+        adapter: {
+          runtimeSql: { execute: () => Promise.resolve({ rows: [] }) },
+        },
+      },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
   it("lets an explicit memory backend win over an available adapter", () => {
     const store = new AcpSessionStore({
       backend: "memory",

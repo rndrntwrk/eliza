@@ -4,6 +4,9 @@
  * driven by a fake fetch (no live model or network).
  */
 import { ElizaError } from "@elizaos/core";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
 import {
@@ -11,6 +14,8 @@ import {
   __setCodexAuthDeps,
   type CodexAuth,
   isExpired,
+  saveCodexAuth,
+  setCodexAuthPersistHook,
 } from "../src/codex-auth";
 import { CodexBackend, translateMessagesToCodexInput } from "../src/codex-backend";
 import { CODEX_JSON_UNBOUNDED } from "../src/codex-json-value";
@@ -42,20 +47,32 @@ const auth: CodexAuth = {
 };
 
 describe("codex plugin metadata", () => {
-  it("declares CODEX_MODEL as display metadata for every model handler", () => {
+  it("declares the matching tier setting as display metadata for every model handler", () => {
+    const expectedSettings: Record<string, string> = {
+      ACTION_PLANNER: "CODEX_CLI_LARGE_MODEL",
+      RESPONSE_HANDLER: "CODEX_CLI_SMALL_MODEL",
+      TEXT_LARGE: "CODEX_CLI_LARGE_MODEL",
+      TEXT_MEDIUM: "CODEX_CLI_LARGE_MODEL",
+      TEXT_MEGA: "CODEX_CLI_LARGE_MODEL",
+      TEXT_NANO: "CODEX_CLI_SMALL_MODEL",
+      TEXT_SMALL: "CODEX_CLI_SMALL_MODEL",
+    };
     const modelTypes = Object.keys(codexCliPlugin.models ?? {});
     expect(modelTypes.length).toBeGreaterThan(0);
     expect(Object.keys(codexCliPlugin.modelMetadata ?? {}).sort()).toEqual(modelTypes.sort());
     for (const modelType of modelTypes) {
       expect(codexCliPlugin.modelMetadata?.[modelType]).toEqual({
-        displayModelSetting: "CODEX_MODEL",
+        displayModelSetting: expectedSettings[modelType],
       });
     }
   });
 });
 
 describe("codex auth helpers", () => {
-  afterEach(() => __resetCodexAuthDeps());
+  afterEach(() => {
+    __resetCodexAuthDeps();
+    setCodexAuthPersistHook(undefined);
+  });
 
   it("detects expired JWT access tokens with a buffer", () => {
     __setCodexAuthDeps({ now: () => 1_000_000 });
@@ -65,6 +82,20 @@ describe("codex auth helpers", () => {
     expect(
       isExpired({ ...auth, tokens: { ...auth.tokens, access_token: jwtWithExp(2_000) } })
     ).toBe(false);
+  });
+
+  it("persists refreshed account auth through the installed runtime hook", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-auth-"));
+    const observed: CodexAuth[] = [];
+    setCodexAuthPersistHook(async (value) => {
+      observed.push(value);
+    });
+    try {
+      await saveCodexAuth(auth, join(dir, "auth.json"));
+      expect(observed).toEqual([auth]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -132,6 +163,39 @@ describe("tool translation", () => {
 });
 
 describe("CodexBackend", () => {
+  it("uses the existing model tiers for everyday and complex work at max effort", () => {
+    const runtime = {
+      getSetting(key: string) {
+        if (key === "CODEX_CLI_SMALL_MODEL") return "gpt-5.6-luna";
+        if (key === "CODEX_CLI_LARGE_MODEL") return "gpt-5.6-sol";
+        if (key === "CODEX_REASONING_EFFORT") return "max";
+        return undefined;
+      },
+    };
+
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "everyday" },
+        "TEXT_SMALL"
+      )
+    ).toMatchObject({ model: "gpt-5.6-luna", reasoningEffort: "max" });
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "complex" },
+        "ACTION_PLANNER"
+      )
+    ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "max" });
+    expect(
+      __INTERNAL_buildCodexGenerateParams(
+        runtime as never,
+        { prompt: "planning middleground" },
+        "TEXT_MEDIUM"
+      )
+    ).toMatchObject({ model: "gpt-5.6-sol", reasoningEffort: "max" });
+  });
+
   it("honors a per-call model override before Codex slot defaults", () => {
     const runtime = {
       getSetting(key: string) {
@@ -259,6 +323,7 @@ describe("CodexBackend", () => {
       prompt: "hello",
       tools: [{ name: "lookup", parameters: { type: "object" } }],
       toolChoice: { name: "lookup" },
+      reasoningEffort: "max",
     });
 
     expect(result).toEqual({
@@ -272,6 +337,7 @@ describe("CodexBackend", () => {
       input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
       tools: [{ type: "function", name: "lookup" }],
       tool_choice: { type: "function", name: "lookup" },
+      reasoning: { effort: "max" },
     });
   });
 

@@ -129,6 +129,176 @@ describe("GitHub workspace provider repository boundary", () => {
     ).rejects.toThrow("Invalid GitHub repository format");
     expect(createClient).not.toHaveBeenCalled();
   });
+
+  it("renews a repository-scoped App credential for PR finalization", async () => {
+    const credential = {
+      id: "app-credential",
+      type: "github_app" as const,
+      token: "installation-token",
+      repo: "example/repo",
+      permissions: ["contents:write"],
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      provider: "github" as const,
+    };
+    const getCredentials = vi.fn(async () => credential);
+    const getCredentialsForRepo = vi.fn(async () => ({
+      ...credential,
+      token: "renewed-repo-token",
+    }));
+    const createPullRequest = vi.fn(async () => ({ number: 42 }));
+    const createClient = vi.fn(() => ({ createPullRequest }));
+    const provider = createGitHubPatProvider({
+      createClient,
+      appProvider: () =>
+        ({
+          getCredentials,
+          getCredentialsForRepo,
+        }) as unknown as import("git-workspace-service").GitHubProvider,
+    });
+    const request = {
+      repo: "https://github.com/example/repo.git",
+      access: "write" as const,
+      context: { executionId: "execution-1" },
+    };
+    await expect(provider.getCredentials(request)).resolves.toBe(credential);
+    await provider.createPullRequest({
+      repo: request.repo,
+      sourceBranch: "feature",
+      targetBranch: "main",
+      title: "Change",
+      body: "Body",
+      credential,
+    });
+    expect(getCredentials).toHaveBeenCalledWith(request);
+    expect(getCredentialsForRepo).toHaveBeenCalledWith(
+      "example",
+      "repo",
+      "write",
+    );
+    expect(createClient).toHaveBeenCalledWith("renewed-repo-token");
+    expect(createPullRequest).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an uninstalled App repository before provisioning", async () => {
+    const provision = vi.fn();
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => ({
+        getProvider: () => ({}),
+        credentialForRepository: async () => {
+          throw new Error("No GitHub App installation found for example/other");
+        },
+      })),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: tmpRoot("workspace-app-boundary-"),
+    });
+    (
+      service as unknown as {
+        workspaceService: { provision: typeof provision };
+      }
+    ).workspaceService = {
+      provision,
+    };
+    await expect(
+      service.provisionWorkspace({
+        repo: "https://github.com/example/other.git",
+        baseBranch: "main",
+      }),
+    ).rejects.toThrow("No GitHub App installation found");
+    expect(provision).not.toHaveBeenCalled();
+  });
+
+  it("uses the App's scoped HTTPS clone for a GitHub SSH repository input", async () => {
+    const workspacePath = tmpRoot("workspace-app-ssh-");
+    const credentialForRepository = vi.fn(async () => ({
+      token: "short-lived-token",
+    }));
+    const provision = vi.fn(async (config: { repo: string }) => ({
+      id: "app-ssh-workspace",
+      path: workspacePath,
+      branch: { name: "feature", baseBranch: "main" },
+      strategy: "clone",
+      repo: config.repo,
+      status: "ready",
+    }));
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => ({
+        getProvider: () => ({}),
+        credentialForRepository,
+      })),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: workspacePath,
+    });
+    const internals = service as unknown as {
+      workspaceService: { provision: typeof provision };
+      enforceWorkspaceDiskBudget: () => Promise<void>;
+      removeAmbientCredentialHelper: () => Promise<void>;
+    };
+    internals.workspaceService = { provision };
+    internals.enforceWorkspaceDiskBudget = async () => {};
+    internals.removeAmbientCredentialHelper = async () => {};
+
+    await service.provisionWorkspace({
+      repo: "git@github.com:example/repo.git",
+      baseBranch: "main",
+    });
+
+    expect(credentialForRepository).toHaveBeenCalledWith(
+      "https://github.com/example/repo.git",
+      "write",
+    );
+    expect(provision).toHaveBeenCalledWith(
+      expect.objectContaining({ repo: "https://github.com/example/repo.git" }),
+    );
+  });
+
+  it("does not expose an App workspace when credential scrubbing fails", async () => {
+    const workspacePath = tmpRoot("workspace-app-scrub-");
+    const provision = vi.fn(async () => ({
+      id: "app-workspace",
+      path: workspacePath,
+      branch: { name: "feature", baseBranch: "main" },
+      strategy: "clone",
+      repo: "https://github.com/example/repo.git",
+      status: "ready",
+    }));
+    const cleanup = vi.fn(async () => undefined);
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => ({
+        getProvider: () => ({}),
+        credentialForRepository: async () => ({ token: "short-lived-token" }),
+      })),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: workspacePath,
+    });
+    const internals = service as unknown as {
+      workspaceService: {
+        provision: typeof provision;
+        cleanup: typeof cleanup;
+      };
+      enforceWorkspaceDiskBudget: () => Promise<void>;
+      removeAmbientCredentialHelper: () => Promise<void>;
+      workspaces: Map<string, unknown>;
+    };
+    internals.workspaceService = { provision, cleanup };
+    internals.enforceWorkspaceDiskBudget = async () => {};
+    internals.removeAmbientCredentialHelper = async () => {
+      throw new Error("credential file could not be removed");
+    };
+    await expect(
+      service.provisionWorkspace({
+        repo: "https://github.com/example/repo.git",
+        baseBranch: "main",
+      }),
+    ).rejects.toThrow("credential file could not be removed");
+    expect(cleanup).toHaveBeenCalledWith("app-workspace");
+    expect(internals.workspaces.has("app-workspace")).toBe(false);
+  });
 });
 
 describe("CodingWorkspaceService.createPR diff-review boundary", () => {

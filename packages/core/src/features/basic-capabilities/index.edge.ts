@@ -99,8 +99,8 @@ export function createBasicCapabilitiesPlugin(
 		description: "Workerd conversational core actions and context providers.",
 		actions: config.disableBasic ? [] : basicActions,
 		providers: config.disableBasic ? [] : providers,
-		evaluators: basicEvaluators,
-		services: basicServices,
+		evaluators: config.disableBasic ? [] : basicEvaluators,
+		services: config.disableBasic ? [] : basicServices,
 	};
 }
 

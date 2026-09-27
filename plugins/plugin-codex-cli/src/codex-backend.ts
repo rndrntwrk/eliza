@@ -54,6 +54,7 @@ export interface CodexGenerateParams {
   tools?: ToolDefinition[];
   toolChoice?: CodexToolChoice;
   model?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   temperature?: number;
   maxTokens?: number;
   abortSignal?: AbortSignal;
@@ -86,6 +87,7 @@ interface CodexResponseBody {
   input: CodexInputItem[];
   store: false;
   stream: true;
+  reasoning?: { effort: NonNullable<CodexGenerateParams["reasoningEffort"]> };
   tools?: OpenAITool[];
   tool_choice?: "auto" | "none" | "required" | { type: "function"; name: string };
   text?: { format: { type: "json_object" } };
@@ -96,7 +98,7 @@ interface CodexResponseBody {
 
 const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api/codex";
-const DEFAULT_USER_AGENT = "codex_cli_rs/0.124.0";
+const DEFAULT_USER_AGENT = "codex_cli_rs/0.144.4";
 const DEFAULT_ORIGINATOR = "codex_cli_rs";
 const DEFAULT_JITTER_MAX_MS = 200;
 const DEFAULT_JITTER_MIN_MS = 50;
@@ -159,6 +161,7 @@ export class CodexBackend {
       store: false,
       stream: true,
     };
+    if (params.reasoningEffort) body.reasoning = { effort: params.reasoningEffort };
     const tools = (params.tools ?? []).map((tool) => this.toolTranslator(tool));
     if (tools.length > 0) body.tools = tools;
     const toolChoice = toCodexToolChoice(params.toolChoice);

@@ -56,6 +56,10 @@ import {
   resolveSettingsSection,
 } from "@elizaos/plugin-commands";
 import type { Context, Telegraf } from "telegraf";
+import {
+  resolveTelegramRuntimeEntityId,
+  telegramIdentityMetadata,
+} from "./identity";
 import type { MessageManager } from "./messageManager";
 
 /**
@@ -206,9 +210,9 @@ export function resolveTelegramEmbedUrl(runtime: IAgentRuntime): string | null {
  * Resolve the Telegram sender's trust level using the agent's role model — the
  * same `hasRoleAccess` check every surface runs. OWNER access satisfies
  * `requiresAuth`; ADMIN access satisfies `requiresElevated`. The sender's
- * Telegram user id is mapped through the account-scoped `createUniqueUuid`
- * (matching `MessageManager`), so role resolution reads the canonical-owner /
- * world-role state the inbound pipeline established.
+ * Telegram user id is resolved through the same durable owner binding as
+ * `MessageManager`, so paired owners keep their canonical entity id when a
+ * native command bypasses the inbound message pipeline.
  */
 export async function resolveTelegramSenderAuth(
   ctx: Context,
@@ -222,10 +226,11 @@ export async function resolveTelegramSenderAuth(
     return { isAuthorized: false, isElevated: false };
   }
 
-  const entityId = createUniqueUuid(
+  const entityId = await resolveTelegramRuntimeEntityId(
     runtime,
-    scopedTelegramKey(String(fromId), accountId),
-  ) as UUID;
+    accountId,
+    String(fromId),
+  );
   const roomId = createUniqueUuid(
     runtime,
     scopedTelegramKey(String(chatId), accountId),
@@ -237,6 +242,15 @@ export async function resolveTelegramSenderAuth(
     agentId: runtime.agentId,
     roomId,
     content: { text: "/whoami", source: TELEGRAM_SURFACE },
+    metadata: {
+      source: TELEGRAM_SURFACE,
+      telegram: telegramIdentityMetadata(
+        String(fromId),
+        ctx.from?.first_name,
+        ctx.from?.username,
+        accountId,
+      ),
+    },
     createdAt: Date.now(),
   };
 
@@ -267,10 +281,11 @@ async function dispatchAgentCommand(
   const fromId = ctx.from?.id;
   const chatId = ctx.chat?.id;
   if (fromId !== undefined && chatId !== undefined) {
-    const entityId = createUniqueUuid(
+    const entityId = await resolveTelegramRuntimeEntityId(
       runtime,
-      scopedTelegramKey(String(fromId), accountId),
-    ) as UUID;
+      accountId,
+      String(fromId),
+    );
     const roomId = createUniqueUuid(
       runtime,
       scopedTelegramKey(String(chatId), accountId),

@@ -1300,8 +1300,14 @@ export class OrchestratorTaskStore {
     // packages/core/src/runtime.ts declares `public adapter!: IDatabaseAdapter`);
     // fall back to the legacy `runtime.databaseAdapter` name that older test
     // harnesses and some custom container runtimes still use.
-    const adapter =
+    const runtimeAdapter =
       options.runtime?.adapter ?? options.runtime?.databaseAdapter;
+    const adapter =
+      isRecord(runtimeAdapter) &&
+      isRecord(runtimeAdapter.runtimeSql) &&
+      typeof runtimeAdapter.runtimeSql.execute === "function"
+        ? { db: runtimeAdapter.runtimeSql }
+        : runtimeAdapter;
     const logger = options.runtime?.logger;
     if (
       (options.backend === undefined || options.backend === "runtime-db") &&
